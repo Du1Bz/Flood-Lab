@@ -1,0 +1,8 @@
+[Player]
+# xuid は通常省略可能（OpenSpartan の DB ファイル名から自動検出される）
+# 複数アカウントの DB がある場合のみ手動指定
+# xuid = 1234567890
+
+[Settings]
+# 一度に読み込む最大試合数
+latest_count = 500

@@ -1,6 +1,27 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
 .venv/
-.env
-data/raw/
-data/processed/
+*.egg-info/
+
+# Streamlit
+.streamlit/
+
+# 設定ファイル（個人情報を含むため）
+config.ini
+
+# OpenSpartan DB（個人のゲームデータ）
+*.db
+
+# データキャッシュ
+data/
+!data/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
