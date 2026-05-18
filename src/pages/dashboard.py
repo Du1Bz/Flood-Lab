@@ -23,14 +23,12 @@ from src.utils.display import (
 
 st.set_page_config(page_title="ダッシュボード | Flood-Lab", layout="wide")
 
-# ==================================================
-# データの取得（app.py からセッションステート経由）
-# ==================================================
-
-df: pd.DataFrame | None = st.session_state.get("df")
+from src.utils.session import load_data, sidebar_refresh
+sidebar_refresh()
+df, _ = load_data()
 
 if df is None or df.empty:
-    st.warning("トップページ（app.py）を先に開いてデータをロードしてください。")
+    st.warning("データをロードできませんでした。")
     st.stop()
 
 # 除外フラグを含む全データを持つ
@@ -136,7 +134,7 @@ ts_df["kda_ma"]      = ts_df["kda"].rolling(ma_window, min_periods=1).mean()
 ts_df["accuracy_ma"] = ts_df["accuracy"].rolling(ma_window, min_periods=1).mean()
 ts_df["x_index"]     = range(len(ts_df))
 
-tab_kda, tab_acc, tab_dmg = st.tabs(["KDA", "命中率", "ダメージ"])
+tab_kda, tab_acc, tab_dmg, tab_perf = st.tabs(["KDA", "命中率", "ダメージ/分", "パーフェクト率"])
 
 with tab_kda:
     fig = go.Figure()
@@ -155,7 +153,7 @@ with tab_kda:
         height=350, margin=dict(t=20, b=20),
         legend=dict(orientation="h", y=1.05),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with tab_acc:
     fig = go.Figure()
@@ -174,25 +172,44 @@ with tab_acc:
         yaxis_tickformat=".0%",
         height=350, margin=dict(t=20, b=20),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with tab_dmg:
-    ts_df["dmg_dealt_ma"] = ts_df["damage_dealt"].rolling(ma_window, min_periods=1).mean()
-    ts_df["dmg_taken_ma"] = ts_df["damage_taken"].rolling(ma_window, min_periods=1).mean()
+    ts_df["dmg_dealt_pm_ma"] = ts_df["damage_dealt_per_min"].rolling(ma_window, min_periods=1).mean()
+    ts_df["dmg_taken_pm_ma"] = ts_df["damage_taken_per_min"].rolling(ma_window, min_periods=1).mean()
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=ts_df["x_index"], y=ts_df["dmg_dealt_ma"],
-        mode="lines", name="与ダメージ移動平均", line=dict(color="#00CC96"),
+        x=ts_df["x_index"], y=ts_df["dmg_dealt_pm_ma"],
+        mode="lines", name="与ダメージ/分", line=dict(color="#00CC96"),
     ))
     fig.add_trace(go.Scatter(
-        x=ts_df["x_index"], y=ts_df["dmg_taken_ma"],
-        mode="lines", name="被ダメージ移動平均", line=dict(color="#FF6692"),
+        x=ts_df["x_index"], y=ts_df["dmg_taken_pm_ma"],
+        mode="lines", name="被ダメージ/分", line=dict(color="#FF6692"),
     ))
     fig.update_layout(
-        xaxis_title="試合番号", yaxis_title="ダメージ",
+        xaxis_title="試合番号", yaxis_title="ダメージ/分",
         height=350, margin=dict(t=20, b=20),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
+
+with tab_perf:
+    ts_df["perf_rate_ma"] = ts_df["perfect_rate"].rolling(ma_window, min_periods=1).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ts_df["x_index"], y=ts_df["perfect_rate"],
+        mode="markers", name="パーフェクト率", opacity=0.3,
+        marker=dict(size=5, color="#AB63FA"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=ts_df["x_index"], y=ts_df["perf_rate_ma"],
+        mode="lines", name=f"移動平均({ma_window})", line=dict(width=2, color="#AB63FA"),
+    ))
+    fig.update_layout(
+        xaxis_title="試合番号", yaxis_title="パーフェクト率",
+        yaxis_tickformat=".0%",
+        height=350, margin=dict(t=20, b=20),
+    )
+    st.plotly_chart(fig, width="stretch")
 
 st.divider()
 
@@ -232,7 +249,7 @@ with tab_map_wr:
     fig.add_hline(y=50, line_dash="dash", line_color="gray")
     fig.update_traces(texttemplate="%{text}%", textposition="outside")
     fig.update_layout(margin=dict(t=20, b=20), coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with tab_map_kd:
     fig = px.bar(
@@ -246,7 +263,7 @@ with tab_map_kd:
     fig.add_hline(y=1, line_dash="dash", line_color="gray")
     fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
     fig.update_layout(margin=dict(t=20, b=20), coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 st.divider()
 
@@ -274,7 +291,7 @@ section_agg["ダメージ差"] = section_agg["ダメージ差"].round(0)
 st.dataframe(
     section_agg[["区分", "試合数", "勝率", "KD", "ダメージ差"]],
     hide_index=True,
-    use_container_width=True,
+    width="stretch",
 )
 
 st.divider()
@@ -302,9 +319,159 @@ if not scatter_df.empty:
     fig.update_traces(marker=dict(size=7))
     fig.update_xaxes(tickformat=".0%")
     fig.update_layout(margin=dict(t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 else:
     st.info("命中率データがありません。")
+
+st.divider()
+
+# ==================================================
+# ② K-RPI vs D-RPI 散布図（4象限分析）
+# ==================================================
+
+st.subheader("🎯 K-RPI vs D-RPI（4象限分析）")
+
+rpi_df = df_filtered.dropna(subset=["k_rpi", "d_rpi"]).copy()
+rpi_df["result_label"] = rpi_df["result"].map(RESULT_DISPLAY)
+
+if not rpi_df.empty:
+    fig = px.scatter(
+        rpi_df,
+        x="k_rpi", y="d_rpi",
+        color="result_label",
+        color_discrete_map={"勝ち": "#00CC96", "負け": "#EF553B", "引き分け": "#FFA15A", "途中抜け": "#AAAAAA"},
+        hover_data={"map_name": True, "rule_name": True, "kda": True},
+        labels={"k_rpi": "K-RPI（キル達成率）", "d_rpi": "D-RPI（生存率）", "result_label": "勝敗"},
+        opacity=0.65,
+        height=450,
+    )
+    fig.update_traces(marker=dict(size=7))
+    # 4象限の基準線
+    fig.add_vline(x=1.0, line_dash="dash", line_color="rgba(255,255,255,0.3)")
+    fig.add_hline(y=1.0, line_dash="dash", line_color="rgba(255,255,255,0.3)")
+    # 象限ラベル
+    x_max = max(rpi_df["k_rpi"].quantile(0.98), 1.5)
+    y_max = max(rpi_df["d_rpi"].quantile(0.98), 1.5)
+    fig.add_annotation(x=x_max*0.95, y=y_max*0.95, text="キル◎ 生存◎", showarrow=False,
+                       font=dict(color="rgba(0,204,150,0.6)", size=11))
+    fig.add_annotation(x=0.3,        y=y_max*0.95, text="キル✕ 生存◎", showarrow=False,
+                       font=dict(color="rgba(255,165,0,0.6)", size=11))
+    fig.add_annotation(x=x_max*0.95, y=0.3,        text="キル◎ 生存✕", showarrow=False,
+                       font=dict(color="rgba(255,165,0,0.6)", size=11))
+    fig.add_annotation(x=0.3,        y=0.3,        text="キル✕ 生存✕", showarrow=False,
+                       font=dict(color="rgba(239,85,59,0.6)", size=11))
+    fig.update_layout(margin=dict(t=20, b=20))
+    st.plotly_chart(fig, width="stretch")
+else:
+    st.info("TrueSkill2データがありません。")
+
+st.divider()
+
+# ==================================================
+# ③ セッション内疲労（折れ線 + 信頼区間）
+# ==================================================
+
+st.subheader("😴 セッション内パフォーマンス推移")
+
+if "session_seq" in df_filtered.columns and "kda" in df_filtered.columns:
+    import numpy as np
+    from scipy import stats as scipy_stats
+
+    fatigue_df = df_filtered.dropna(subset=["kda", "session_seq"]).copy()
+    fatigue_df["session_seq"] = fatigue_df["session_seq"].astype(int)
+    max_seq = int(fatigue_df["session_seq"].quantile(0.9))  # 外れ値除外
+
+    fatigue_df = fatigue_df[fatigue_df["session_seq"] <= max_seq]
+
+    seq_stats = (
+        fatigue_df.groupby("session_seq")["kda"]
+        .agg(["mean", "sem", "count"])
+        .reset_index()
+    )
+    seq_stats.columns = ["seq", "mean", "sem", "count"]
+    seq_stats = seq_stats[seq_stats["count"] >= 3]  # 3試合以上のセッション番号のみ
+
+    if not seq_stats.empty:
+        ci95 = seq_stats["sem"] * 1.96
+        fig = go.Figure()
+        # CI帯
+        fig.add_trace(go.Scatter(
+            x=pd.concat([seq_stats["seq"], seq_stats["seq"].iloc[::-1]]),
+            y=pd.concat([seq_stats["mean"] + ci95, (seq_stats["mean"] - ci95).iloc[::-1]]),
+            fill="toself", fillcolor="rgba(99,110,250,0.15)",
+            line=dict(color="rgba(0,0,0,0)"), name="95% CI", showlegend=True,
+        ))
+        # 平均線
+        fig.add_trace(go.Scatter(
+            x=seq_stats["seq"], y=seq_stats["mean"],
+            mode="lines+markers", name="平均KDA",
+            line=dict(color="#636EFA", width=2),
+            marker=dict(size=6),
+        ))
+        fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)")
+        fig.update_layout(
+            xaxis_title="セッション内試合番号",
+            yaxis_title="KDA",
+            xaxis=dict(dtick=1),
+            height=350, margin=dict(t=20, b=20),
+        )
+        st.plotly_chart(fig, width="stretch")
+        # 相関係数
+        if len(seq_stats) >= 3:
+            r, p = scipy_stats.pearsonr(seq_stats["seq"], seq_stats["mean"])
+            trend = "📉 後半に低下傾向あり" if r < -0.3 and p < 0.1 else "→ 明確な低下傾向なし"
+            st.caption(f"相関係数 r = {r:.3f}（p = {p:.3f}）　{trend}")
+    else:
+        st.info("セッションデータが不十分です。")
+else:
+    st.info("セッションデータがありません。")
+
+st.divider()
+
+# ==================================================
+# ① ダメージ差の分布（マップ別 箱ひげ図）
+# ==================================================
+
+st.subheader("📦 マップ別 ダメージ差の分布")
+
+box_df = df_filtered.dropna(subset=["damage_diff"]).copy()
+
+if not box_df.empty:
+    # 5試合以上のマップのみ
+    map_counts = box_df["map_name"].value_counts()
+    valid_maps = map_counts[map_counts >= 5].index.tolist()
+    box_df = box_df[box_df["map_name"].isin(valid_maps)]
+
+    # 中央値でソート
+    map_order = (
+        box_df.groupby("map_name")["damage_diff"]
+        .median()
+        .sort_values(ascending=True)
+        .index.tolist()
+    )
+
+    fig = go.Figure()
+    for map_name in map_order:
+        mdf = box_df[box_df["map_name"] == map_name]
+        fig.add_trace(go.Box(
+            y=mdf["damage_diff"],
+            name=map_name,
+            boxmean=True,
+            marker_color="#636EFA",
+            line_color="#636EFA",
+        ))
+
+    fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.3)")
+    fig.update_layout(
+        yaxis_title="ダメージ差",
+        xaxis_title="マップ",
+        showlegend=False,
+        height=400,
+        margin=dict(t=20, b=20),
+    )
+    st.plotly_chart(fig, width="stretch")
+else:
+    st.info("データがありません。")
 
 st.divider()
 
@@ -314,23 +481,27 @@ st.divider()
 
 st.subheader("📉 eMMR v2 推移")
 
-emmr_df = df_filtered.dropna(subset=["emmr_v2"]).sort_values("played_at")
+emmr_df = df_filtered[
+    df_filtered["playlist"] != "custom"
+].dropna(subset=["emmr_v2"]).sort_values("played_at")
 if not emmr_df.empty:
     fig = px.line(
         emmr_df, x="played_at", y="emmr_v2",
         color="playlist",
         color_discrete_map={
-            "ranked_arena":  "#636EFA",
-            "ranked_slayer": "#EF553B",
+            "ranked_arena":   "#636EFA",
+            "ranked_slayer":  "#EF553B",
+            "ranked_doubles": "#00CC96",
+            "ranked_ffa":     "#FECB52",
+            "ranked_snipers": "#B6E880",
         },
         labels={"played_at": "日時", "emmr_v2": "eMMR v2", "playlist": "区分"},
         height=350,
     )
-    # 凡例の表示名を日本語に
     for trace in fig.data:
         trace.name = PLAYLIST_DISPLAY.get(trace.name, trace.name)
     fig.update_layout(margin=dict(t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 else:
     st.info("eMMR v2 のデータがありません。")
 
@@ -357,7 +528,7 @@ if not csr_df.empty:
     for trace in fig.data:
         trace.name = PLAYLIST_DISPLAY.get(trace.name, trace.name)
     fig.update_layout(margin=dict(t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 else:
     st.info("CSR データがありません。")
 
@@ -396,4 +567,4 @@ if "命中率" in show_df.columns:
         lambda x: f"{x:.1%}" if pd.notna(x) else "—"
     )
 
-st.dataframe(show_df, use_container_width=True, height=400)
+st.dataframe(show_df, width="stretch", height=400)

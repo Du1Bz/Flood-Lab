@@ -18,11 +18,28 @@ OUTCOME_MAP: dict[int, str] = {
     4: "did_not_finish",
 }
 
-# LifecycleMode=3 のときの PlaylistExperience → playlist 内部値
+# プレイリスト PublicName（lowercase）→ playlist 内部値
+# 長い文字列を先に定義（部分一致なので順序重要）
+PLAYLIST_NAME_MAP: list[tuple[str, str]] = [
+    ("ranked arena",   "ranked_arena"),
+    ("ranked slayer",  "ranked_slayer"),
+    ("ranked doubles", "ranked_doubles"),
+    ("ranked ffa",     "ranked_ffa"),
+    ("ranked snipers", "ranked_snipers"),
+    ("joint ops",      "pve"),
+    ("new btb",        "btb"),
+    ("big team",       "btb"),
+    ("btb",            "btb"),
+    # 上記に当てはまらないマッチメイドはすべてカジュアル
+]
+
+# LifecycleMode=3 × PlaylistExperience → playlist 内部値（フォールバック用）
+# 注意: PlaylistExperienceはHalo側で統一されておらず信頼性が低い。
+# 主分類はPLAYLIST_NAME_MAPで行い、こちらはあくまで最終フォールバック。
 PLAYLIST_EXPERIENCE_MAP: dict[int, str] = {
-    2: "ranked_arena",
-    3: "ranked_slayer",
-    5: "social",
+    2: "casual",       # ranked_arena と同値だが名前マッチが優先される
+    3: "casual",       # ranked_slayer と同値だが名前マッチが優先される
+    5: "casual",
     6: "minigame",
     9: "btb",
 }
@@ -93,13 +110,17 @@ DISPLAY_NAMES: dict[str, str] = {
 }
 
 PLAYLIST_DISPLAY: dict[str, str] = {
-    "ranked_arena":  "ランクアリーナ",
-    "ranked_slayer": "ランクスレイヤー",
-    "social":        "ソーシャル",
-    "minigame":      "ミニゲーム",
-    "btb":           "BTB",
-    "custom":        "カスタムゲーム",
-    "other":         "Other",
+    "ranked_arena":   "ランクアリーナ",
+    "ranked_slayer":  "ランクスレイヤー",
+    "ranked_doubles": "ランクダブルス",
+    "ranked_ffa":     "ランクFFA",
+    "ranked_snipers": "ランクスナイパーズ",
+    "casual":         "カジュアル",
+    "btb":            "BTB",
+    "pve":            "PvE",
+    "minigame":       "ミニゲーム",
+    "custom":         "カスタムゲーム",
+    "other":          "Other",
 }
 
 RESULT_DISPLAY: dict[str, str] = {

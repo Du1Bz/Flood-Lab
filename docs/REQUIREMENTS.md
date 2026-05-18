@@ -16,7 +16,10 @@ OpenSpartan が持つ JSON の全フィールドを捨てずに DataFrame に展
 | 除外理由 | `exclude_flag` の値 |
 |---|---|
 | 試合時間が1分未満 | `short_match` |
-| 途中抜け（完走していない） | `incomplete` |
+| 途中参加・途中抜け | `incomplete` |
+| BOT参加試合 | `bot_match` |
+| 発射数30以下（AFK・マップラン等） | `low_shots` |
+| カスタムゲームで非ランクルール / 非ランクマップ | `custom_non_ranked` |
 | 手動除外 | `manual` |
 
 集計・インサイトは `exclude_flag` が空の試合のみを対象にする。  
@@ -71,11 +74,12 @@ OpenSpartan ローカルDB（読み取り専用）
                ▼
 ┌──────────────────────────────────┐
 │  app.py + src/pages/            │
-│  サイドバーナビで3ページ切替     │
+│  st.navigation() で4ページ管理  │
 │                                  │
-│  pages/dashboard.py             │  ← 自由分析ビュー
-│  pages/report.py                │  ← 定型レポートビュー
-│  pages/history.py               │  ← 試合履歴ビュー
+│  src/pages/app_home.py          │  ← ホーム（カレンダーHM含む）
+│  src/pages/dashboard.py         │  ← 自由分析ビュー
+│  src/pages/report.py            │  ← 定型レポートビュー
+│  src/pages/history.py           │  ← 試合履歴ビュー
 └──────────────────────────────────┘
 ```
 
@@ -163,7 +167,7 @@ Flood の `parser.py:build_party_map()` をそのまま流用する。
 **サイドバー：**
 - 「🔄 データ更新」ボタン
 - 期間：直近N戦 / 今月 / 今週 / カスタム期間
-- 区分選択（ランクアリーナ / ランクスレイヤー / カスタムゲーム / 全部）
+- 区分選択（ランクアリーナ / ランクスレイヤー / ランクダブルス / ランクFFA / ランクスナイパーズ / カジュアル / BTB / PvE / カスタムゲーム / 全部）
 - マップ選択
 - ルール選択
 - ※3つの絞り込みは AND 条件で連動する（区分 × マップ × ルール）
@@ -276,29 +280,29 @@ sandbox/
 
 ## Phase スコープ
 
-### Phase 1 — コア（まず動くもの）
+### Phase 1 — コア ✅ 完了
 
 **目標：データ読み込み → Streamlit 起動 → 自由分析ビューで KDA / Accuracy が見られる**
 
-- [ ] `src/core/config.py`: XUID 自動検出、`config.ini` 読み込み（Flood から移植・Notion 関連削除）
-- [ ] `src/core/database.py`: SQLite 接続（読み取り専用）、マッチデータ JSON 展開、`st.cache_data` キャッシュ（Flood から移植）
-- [ ] `src/logic/parser.py`: マッチサマリ DataFrame 生成、マップ名 / モード名の紐付け、パーティ検出（Flood から移植・Notion 形式変換削除）
-- [ ] `src/logic/metrics.py`: eMMR v2、K-RPI / D-RPI、CSR（Flood からそのまま移植）
-- [ ] `src/logic/processor.py`: 時系列集計、マップ別 / プレイリスト別集計（新規）
-- [ ] `src/utils/helpers.py`: 共通ユーティリティ（Flood からそのまま移植）
-- [ ] `app.py` + `src/pages/dashboard.py`: サイドバーナビ、自由分析ビュー（フィルター + KDA 時系列折れ線 + マップ別棒グラフ + マッチ一覧）
-- [ ] 環境セットアップ（.venv, requirements.txt, pyproject.toml）
-- [ ] README にセットアップ手順・使い方を記載
+- [x] `src/core/config.py`: XUID 自動検出、`config.ini` 読み込み（Flood から移植・Notion 関連削除）
+- [x] `src/core/database.py`: SQLite 接続（読み取り専用）、マッチデータ JSON 展開、`st.cache_data` キャッシュ（Flood から移植）
+- [x] `src/logic/parser.py`: マッチサマリ DataFrame 生成、マップ名 / モード名の紐付け、パーティ検出（Flood から移植・Notion 形式変換削除）
+- [x] `src/logic/metrics.py`: eMMR v2、K-RPI / D-RPI、CSR（Flood からそのまま移植）
+- [x] `src/logic/processor.py`: 時系列集計、マップ別 / プレイリスト別集計（新規）
+- [x] `src/utils/helpers.py`: 共通ユーティリティ（Flood からそのまま移植）
+- [x] `app.py` + `src/pages/dashboard.py`: サイドバーナビ、自由分析ビュー（フィルター + KDA 時系列折れ線 + マップ別棒グラフ + マッチ一覧）
+- [x] 環境セットアップ（.venv, requirements.txt, pyproject.toml）
+- [x] README にセットアップ手順・使い方を記載
 
-### Phase 2 — レポート・インサイト強化
+### Phase 2 — レポート・インサイト強化 ✅ 完了
 
-- [ ] セッション自動分割（Flood の `build_sessions()` 移植）
-- [ ] CSR 推移グラフ追加（区分別）
-- [ ] 散布図（KDA vs Accuracy 等）追加
-- [ ] 区分 × マップ × ルール クロス集計ビュー実装
-- [ ] `src/pages/report.py`: 定型レポートビュー実装
-- [ ] `src/pages/history.py`: 試合履歴ビュー実装（除外フラグ表示・詳細展開）
-- [ ] `src/logic/insights.py`: インサイトエンジン実装（Lv.2 統計ベース）
+- [x] セッション自動分割（Flood の `build_sessions()` 移植）
+- [x] CSR 推移グラフ追加（区分別）
+- [x] 散布図（KDA vs Accuracy 等）追加
+- [x] 区分 × マップ × ルール クロス集計ビュー実装
+- [x] `src/pages/report.py`: 定型レポートビュー実装
+- [x] `src/pages/history.py`: 試合履歴ビュー実装（除外フラグ表示・詳細展開）
+- [x] `src/logic/insights.py`: インサイトエンジン実装（Lv.2 統計ベース）
 
 ### Phase 3 — 実験・応用
 
@@ -318,6 +322,7 @@ sandbox/
 | データソース | SQLite (OpenSpartan) | 読み取り専用で接続 |
 | 抽出・加工 | Python + Pandas + NumPy | JSON 展開、正規化、集計、eMMR 計算 |
 | 可視化 | Streamlit + Plotly | ダッシュボード、チャート |
+| 統計 | scipy | インサイトエンジン（信頼区間・相関） |
 | 環境管理 | Python .venv + pyproject.toml | 依存関係分離 |
 
 ---
@@ -339,7 +344,10 @@ Flood-Lab/
 │   ├── utils/
 │   │   ├── helpers.py          # 共通ユーティリティ
 │   │   └── gamertag.py         # XUID→ゲーマータグ変換・キャッシュ（Phase 3）
+│   ├── components/
+│   │   └── calendar_heatmap.py # デイリーアクティビティ カレンダーHM
 │   └── pages/
+│       ├── app_home.py         # ホーム（サマリー + カレンダーHM）
 │       ├── dashboard.py        # 自由分析ビュー
 │       ├── report.py           # 定型レポートビュー（Phase 2）
 │       └── history.py          # 試合履歴ビュー（Phase 2）
