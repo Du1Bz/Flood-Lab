@@ -142,8 +142,132 @@ st.dataframe(
 st.divider()
 st.subheader("🔍 試合詳細")
 
-match_options = table_df["日時"] + "  " + table_df["マップ"] + "  " + table_df["勝敗"]
+match_options = (
+    table_df["日時"] + "  " +
+    table_df["区分"] + "  " +
+    table_df["マップ"] + "  " +
+    table_df["ルール"] + "  " +
+    table_df["勝敗"]
+)
 selected_label = st.selectbox("試合を選択", options=match_options.tolist())
+
+# ==================================================
+# 指標ヘルプテキスト
+# ==================================================
+
+METRIC_HELP: dict[str, str] = {
+    "kd_ratio":     "K/D（キルデスレシオ）\nキル数 ÷ デス数。デス=0のときはキル数をそのまま使う。\n1.0が均衡。高いほど死なずに倒せている。",
+    "kda":          "KDA\nキル - デス + アシスト÷3。\nアシスト3回をキル1回相当とみなした総合貢献度。",
+    "accuracy":     "命中率\n命中数 ÷ 発射数。\n高いほど弾を無駄撃ちせず当てられている。",
+    "damage_diff":  "ダメージ差\n与ダメージ - 被ダメージ。\nプラスなら敵より多くダメージを与えた試合。",
+    "k_rpi":        "K-RPI（キル相対パフォーマンス指数）\nTrueSkill2が予測した期待キル数に対する実績の比率。\n1.0=期待通り / >1.0=期待超え（ポップオフ） / <1.0=期待以下。",
+    "d_rpi":        "D-RPI（デス相対パフォーマンス指数）\nTrueSkill2が予測した期待デス数に対して、実際に少なく死んだ比率。\n>1.0=期待より死ななかった（生存力高） / <1.0=期待より多く死んだ。",
+    "impact_score": "インパクトスコア\n(K-RPI + D-RPI) ÷ 2。\nTrueSkill2基準の総合パフォーマンス指標。1.0が平均。",
+    "lgai":         "LGAI（ロビー格差補正インパクト）\n敵チームMMR - 自チームCSR。\n正の値=格上相手のロビー / 0付近=均衡 / 負の値=格下相手。",
+    "team_mmr":     "自チームMMR\n自チームの平均MMR（マッチメイクレーティング）。\nTrueSkill2がロビーバランスの計算に使う内部値。",
+    "enemy_mmr":    "敵チームMMR\n敵チームの平均MMR。\nLGAIの計算にも使われる。自チームMMRとの差がロビーの格差。",
+    "csr_pre":      "試合前CSR\nこの試合を始めた時点のCSR（Competitive Skill Rating）。\n公式ランク指標。456〜2500程度の範囲。",
+    "csr_post":     "試合後CSR\nこの試合が終わった後のCSR。\n試合前CSRとの差がCSR増減。",
+    "emmr_v2":      "eMMR v2（推定MMR）\nFload-Lab独自指標。カルマンフィルタで平滑化した推定MMR。\nCSRとスタッツを組み合わせてノイズを除いたスキルトレンドを表す。",
+}
+
+# ==================================================
+# ゲージ・色付きメトリクス定義
+# ==================================================
+
+RANK_COLORS = {
+    "red":    "#D85A30",
+    "silver": "#8899AA",
+    "blue":   "#5B8DD9",
+    "purple": "#9B59B6",
+}
+
+def _rank(val, thresholds: list) -> str:
+    """thresholds = [silver_min, blue_min, purple_min]"""
+    if val is None or pd.isna(val):
+        return "silver"
+    if val >= thresholds[2]:
+        return "purple"
+    if val >= thresholds[1]:
+        return "blue"
+    if val >= thresholds[0]:
+        return "silver"
+    return "red"
+
+STAT_THRESHOLDS = {
+    "kd_ratio":     [0.9,  1.1,  1.3],
+    "kda":          [-1.0, 0.0,  2.0],
+    "accuracy":     [0.50, 0.55, 0.60],
+    "damage_diff":  [-500, 0,    500],
+    "k_rpi":        [0.9,  1.1,  1.2],
+    "d_rpi":        [0.9,  1.1,  1.3],
+    "impact_score": [0.9,  1.1,  1.2],
+    "lgai":         [0,    100,  200],
+    "csr_pre":      [900,  1200, 1500],
+    "csr_post":     [900,  1200, 1500],
+    "team_mmr":     [900,  1200, 1500],
+    "enemy_mmr":    [900,  1200, 1500],
+    "emmr_v2":      [900,  1200, 1500],
+}
+
+GAUGE_RANGE = {
+    "kd_ratio":     (0,    2.0),
+    "kda":          (-5,   5.0),
+    "accuracy":     (0,    1.0),
+    "damage_diff":  (-4000, 4000),
+    "k_rpi":        (0,    2.0),
+    "d_rpi":        (0,    2.0),
+    "impact_score": (0,    2.0),
+    "lgai":         (-500, 500),
+    "csr_pre":      (0,    2000),
+    "csr_post":     (0,    2000),
+    "team_mmr":     (0,    2000),
+    "enemy_mmr":    (0,    2000),
+    "emmr_v2":      (0,    2000),
+}
+
+
+def _gauge_metric(label: str, val, fmt: str = "{:.2f}", col_key: str = "") -> None:
+    """色付きゲージメトリクスを表示する。col_key に対応するヘルプが METRIC_HELP にあれば ℹ️ ツールチップを付ける。"""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        st.metric(label, "—")
+        return
+
+    rank  = _rank(val, STAT_THRESHOLDS.get(col_key, [None, None, None])) if col_key in STAT_THRESHOLDS else "silver"
+    color = RANK_COLORS[rank]
+
+    if col_key in GAUGE_RANGE:
+        g_min, g_max = GAUGE_RANGE[col_key]
+        ratio = max(0.0, min(1.0, (float(val) - g_min) / (g_max - g_min))) if g_max != g_min else 0.5
+    else:
+        ratio = 0.5
+
+    bar_w = int(ratio * 100)
+    display_val = fmt if "%" in fmt else (fmt.format(val) if "{" in fmt else str(val))
+
+    # ヘルプテキストがあればラベルに title 属性と ℹ️ を付ける
+    help_text = METRIC_HELP.get(col_key, "")
+    if help_text:
+        # title属性内のダブルクォートをエスケープ、改行を&#10;に変換
+        safe_help = help_text.replace('"', "&quot;").replace("\n", "&#10;")
+        label_html = (
+            f'<span title="{safe_help}" style="cursor:help">'
+            f'{label} <span style="font-size:10px;opacity:0.5">ℹ</span>'
+            f'</span>'
+        )
+    else:
+        label_html = label
+
+    st.markdown(f"""
+<div style="margin-bottom:8px">
+  <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:2px">{label_html}</div>
+  <div style="font-size:18px;font-weight:500;color:{color}">{display_val}</div>
+  <div style="background:rgba(255,255,255,.08);border-radius:3px;height:4px;margin-top:3px">
+    <div style="background:{color};width:{bar_w}%;height:4px;border-radius:3px"></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
 
 if selected_label:
     idx = match_options[match_options == selected_label].index[0]
@@ -164,43 +288,108 @@ if selected_label:
 
     with col2:
         st.markdown("**⚔️ 個人スタッツ**")
-        st.write(f"キル: {int(row.get('kills', 0))}")
-        st.write(f"デス: {int(row.get('deaths', 0))}")
-        st.write(f"アシスト: {int(row.get('assists', 0))}")
-        st.write(f"K/D: {row.get('kd_ratio', '—')}")
-        st.write(f"KDA: {row.get('kda', '—')}")
-        kd = row.get('accuracy')
-        st.write(f"命中率: {kd:.1%}" if pd.notna(kd) else "命中率: —")
+        st.write(f"キル: {int(row.get('kills', 0))}　デス: {int(row.get('deaths', 0))}　アシスト: {int(row.get('assists', 0))}")
+        _gauge_metric("K/D",       row.get("kd_ratio"),    "{:.2f}",  "kd_ratio")
+        _gauge_metric("KDA",       row.get("kda"),          "{:.2f}",  "kda")
+        acc = row.get("accuracy")
+        if pd.notna(acc):
+            _gauge_metric("命中率", acc, f"{float(acc):.1%}", "accuracy")
+        else:
+            st.metric("命中率", "—")
+        _gauge_metric("ダメージ差", row.get("damage_diff"), "{:+.0f}", "damage_diff")
         st.write(f"与ダメージ: {int(row.get('damage_dealt', 0)):,}")
         st.write(f"被ダメージ: {int(row.get('damage_taken', 0)):,}")
-        dd = row.get('damage_diff')
-        st.write(f"ダメージ差: {int(dd):+,}" if pd.notna(dd) else "ダメージ差: —")
-        st.write(f"重火器キル: {int(row.get('power_kills', 0))}")
-        st.write(f"パーフェクトキル: {int(row.get('perfect_kills', 0))}")
+        st.write(f"重火器キル: {int(row.get('power_kills', 0))}　パーフェクトキル: {int(row.get('perfect_kills', 0))}")
         st.write(f"チーム内順位: {row.get('team_rank', '—')}")
 
     with col3:
         st.markdown("**📊 TrueSkill2 / MMR**")
-        ek = row.get('expected_kills')
-        ed = row.get('expected_deaths')
+        ek = row.get("expected_kills")
+        ed = row.get("expected_deaths")
         st.write(f"期待キル: {ek:.1f}" if pd.notna(ek) else "期待キル: —")
         st.write(f"期待デス: {ed:.1f}" if pd.notna(ed) else "期待デス: —")
-        kr = row.get('k_rpi')
-        dr = row.get('d_rpi')
-        st.write(f"K-RPI: {kr:.3f}" if pd.notna(kr) else "K-RPI: —")
-        st.write(f"D-RPI: {dr:.3f}" if pd.notna(dr) else "D-RPI: —")
-        lg = row.get('lgai')
-        st.write(f"LGAI: {lg:.0f}" if pd.notna(lg) else "LGAI: —")
-        im = row.get('impact_score')
-        st.write(f"インパクトスコア: {im:.3f}" if pd.notna(im) else "インパクトスコア: —")
-        st.write(f"自チームMMR: {int(row['team_mmr']) if pd.notna(row.get('team_mmr')) else '—'}")
-        st.write(f"敵チームMMR: {int(row['enemy_mmr']) if pd.notna(row.get('enemy_mmr')) else '—'}")
-        cp = row.get('csr_pre')
-        co = row.get('csr_post')
-        cd = row.get('csr_delta')
-        st.write(f"試合前CSR: {int(cp) if pd.notna(cp) else '—'}")
-        st.write(f"試合後CSR: {int(co) if pd.notna(co) else '—'}")
+        _gauge_metric("K-RPI",        row.get("k_rpi"),        "{:.3f}", "k_rpi")
+        _gauge_metric("D-RPI",        row.get("d_rpi"),        "{:.3f}", "d_rpi")
+        _gauge_metric("インパクトスコア", row.get("impact_score"), "{:.3f}", "impact_score")
+        _gauge_metric("LGAI",         row.get("lgai"),         "{:+.0f}", "lgai")
+        _gauge_metric("自チームMMR",  row.get("team_mmr"),     "{:.0f}",  "team_mmr")
+        _gauge_metric("敵チームMMR",  row.get("enemy_mmr"),    "{:.0f}",  "enemy_mmr")
+        cp = row.get("csr_pre")
+        co = row.get("csr_post")
+        cd = row.get("csr_delta")
+        _gauge_metric("試合前CSR",    cp, "{:.0f}", "csr_pre")
+        _gauge_metric("試合後CSR",    co, "{:.0f}", "csr_post")
         st.write(f"CSR増減: {int(cd):+d}" if pd.notna(cd) else "CSR増減: —")
-        st.write(f"eMMR v2: {row['emmr_v2']:.0f}" if pd.notna(row.get('emmr_v2')) else "eMMR v2: —")
+        _gauge_metric("eMMR v2",      row.get("emmr_v2"),      "{:.0f}",  "emmr_v2")
         st.write(f"パーティ: {row.get('party_type', '—')}")
         st.write(f"セッションID: {row.get('session_id', '—')} / 試合番号: {row.get('session_seq', '—')}")
+
+    # オブジェクトスタッツ（該当ルールのみ表示）
+    OBJ_SECTIONS = {
+        "oddball": {
+            "label": "🎱 Oddball スタッツ",
+            "fields": [
+                ("oddball_skull_time_sec", "ボール保持時間（秒）"),
+                ("oddball_scoring_ticks",  "スコアティック"),
+                ("oddball_skull_grabs",    "ボールグラブ"),
+                ("oddball_carrier_kills",  "ボールキャリアキル"),
+                ("oddball_skulls_denied",  "キャリア阻止"),
+            ],
+        },
+        "strongholds": {
+            "label": "🏰 Strongholds スタッツ",
+            "fields": [
+                ("zone_occupation_sec", "ゾーン占領時間（秒）"),
+                ("zone_scoring_ticks",  "スコアティック"),
+                ("zone_captures",       "ゾーンキャプチャ"),
+                ("zone_def_kills",      "防御キル"),
+                ("zone_off_kills",      "攻撃キル"),
+                ("zone_secures",        "ゾーンセキュア"),
+            ],
+        },
+        "koth": {
+            "label": "👑 KOTH スタッツ",
+            "fields": [
+                ("zone_occupation_sec", "ヒル保持時間（秒）"),
+                ("zone_scoring_ticks",  "スコアティック"),
+                ("zone_def_kills",      "防御キル"),
+                ("zone_off_kills",      "攻撃キル"),
+            ],
+        },
+        "ctf": {
+            "label": "🚩 CTF スタッツ",
+            "fields": [
+                ("flag_captures",         "旗キャプチャ"),
+                ("flag_grabs",            "旗グラブ"),
+                ("flag_returns",          "旗リターン"),
+                ("flag_secures",          "旗セキュア"),
+                ("flag_steals",           "旗スティール"),
+                ("flag_carrier_time_sec", "旗保持時間（秒）"),
+                ("flag_carriers_killed",  "旗キャリアキル"),
+            ],
+        },
+    }
+
+    rule = (row.get("rule_name") or "").lower()
+    if "oddball" in rule:
+        section = OBJ_SECTIONS["oddball"]
+    elif "stronghold" in rule:
+        section = OBJ_SECTIONS["strongholds"]
+    elif "king" in rule or "koth" in rule:
+        section = OBJ_SECTIONS["koth"]
+    elif "ctf" in rule or "capture" in rule:
+        section = OBJ_SECTIONS["ctf"]
+    else:
+        section = None
+
+    if section:
+        has_data = any(pd.notna(row.get(f)) for f, _ in section["fields"])
+        if has_data:
+            st.markdown(f"**{section['label']}**")
+            obj_cols_display = st.columns(len(section["fields"]))
+            for i, (field, label) in enumerate(section["fields"]):
+                val = row.get(field)
+                obj_cols_display[i].metric(
+                    label,
+                    f"{int(val)}" if pd.notna(val) else "—"
+                )

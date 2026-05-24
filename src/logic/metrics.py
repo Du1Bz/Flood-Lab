@@ -80,6 +80,29 @@ def add_basic_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df["damage_taken_per_min"] = (df["damage_taken"] / dur_min).round(1)
     df["power_kill_density"]   = (df["power_kills"]  / dur_min).round(3)
 
+    # パワーウェポンコントロール率
+    # 自チームPWキル / (自チームPWキル + 敵チームPWキル)
+    # 両チームとも0のとき（誰もPWを取れなかった等）は None
+    df["pw_control_rate"] = df.apply(
+        lambda r: (
+            round(r["team_pw_kills"] / (r["team_pw_kills"] + r["enemy_pw_kills"]), 3)
+            if (
+                pd.notna(r.get("team_pw_kills"))
+                and pd.notna(r.get("enemy_pw_kills"))
+                and (r["team_pw_kills"] + r["enemy_pw_kills"]) > 0
+            )
+            else None
+        ),
+        axis=1,
+    )
+
+    # エンゲージメント密度
+    # (キル + デス + アシスト) / 試合時間(分)
+    # 試合への関与の濃さ。ルール間比較に有用。
+    df["engagement_density"] = (
+        (df["kills"] + df["deaths"] + df["assists"]) / dur_min
+    ).round(3)
+
     return df
 
 

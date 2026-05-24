@@ -131,13 +131,16 @@ def detect_slump(df: pd.DataFrame) -> list[Insight]:
 
 
 def detect_loss_streak(df: pd.DataFrame) -> list[Insight]:
-    """同一セッション内でLOSS_STREAK_MIN連敗以上を検出。"""
+    """直近5セッション内でLOSS_STREAK_MIN連敗以上を検出。"""
     insights: list[Insight] = []
     if "session_id" not in df.columns:
         return insights
 
-    for sid, group in df.groupby("session_id"):
-        group = group.sort_values("session_seq")
+    # 直近5セッションのみ対象（全期間だと過去の記録が大量に出る）
+    recent_sessions = sorted(df["session_id"].dropna().unique())[-5:]
+
+    for sid in recent_sessions:
+        group = df[df["session_id"] == sid].sort_values("session_seq")
         streak = 0
         max_streak = 0
         for flag in group["result_flag"]:

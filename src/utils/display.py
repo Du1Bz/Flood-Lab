@@ -107,6 +107,10 @@ DISPLAY_NAMES: dict[str, str] = {
     "damage_dealt_per_min":   "与ダメージ/分",
     "damage_taken_per_min":   "被ダメージ/分",
     "power_kill_density":     "重火器キル密度",
+    "team_pw_kills":          "自チームPWキル",
+    "enemy_pw_kills":         "敵チームPWキル",
+    "pw_control_rate":        "PWコントロール率",
+    "engagement_density":     "エンゲージメント密度",
 }
 
 PLAYLIST_DISPLAY: dict[str, str] = {

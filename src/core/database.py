@@ -180,6 +180,13 @@ def _classify_playlist(
 # マップ名・ルール名の解決
 # ==================================================
 
+def _normalize_rule(rule: str) -> str:
+    """ルール名を正規化する。CTF 3 Captures / CTF 5 Captures → CTF にまとめる等。"""
+    if rule.upper().startswith("CTF"):
+        return "CTF"
+    return rule
+
+
 def _parse_pair_name(name: str | None) -> tuple[str, str]:
     """
     PlaylistMapModePair の PublicName から (rule_name, map_name) を返す。
@@ -195,7 +202,7 @@ def _parse_pair_name(name: str | None) -> tuple[str, str]:
         .replace("BTB:","")
         .strip()
     )
-    return rule or "Other", _clean_map(right)
+    return _normalize_rule(rule or "Other"), _clean_map(right)
 
 
 def _clean_map(name: str | None) -> str:
@@ -206,9 +213,8 @@ def _parse_custom_rule(gv_name: str | None) -> str:
     """GameVariant.PublicName からルール名を返す。"""
     n = (gv_name or "").strip()
     if n.lower().startswith("ranked:"):
-        # "Ranked:CTF 5 Captures" → "CTF 5 Captures"
-        return n[7:].strip()
-    return n or "Other"
+        n = n[7:].strip()
+    return _normalize_rule(n) if n else "Other"
 
 
 # ==================================================
@@ -278,6 +284,77 @@ def _get_exclude_flag(
 # ==================================================
 
 PERFECT_KILL_NAME_ID = 1512363953
+
+
+def _parse_obj_stats(me: dict[str, Any]) -> dict[str, Any]:
+    """
+    PlayerTeamStats から オブジェクトルール専用スタッツを取得して返す。
+    存在しないフィールドはNone。
+    """
+    stats = safe_get(me, "PlayerTeamStats", 0, "Stats") or {}
+
+    result: dict[str, Any] = {
+        # Oddball
+        "oddball_skull_time_sec":  None,
+        "oddball_scoring_ticks":   None,
+        "oddball_skull_grabs":     None,
+        "oddball_carrier_kills":   None,
+        "oddball_skulls_denied":   None,
+        # Strongholds / KOTH（ZonesStatsを共有）
+        "zone_occupation_sec":     None,
+        "zone_scoring_ticks":      None,
+        "zone_captures":           None,
+        "zone_def_kills":          None,
+        "zone_off_kills":          None,
+        "zone_secures":            None,
+        # CTF
+        "flag_captures":           None,
+        "flag_grabs":              None,
+        "flag_returns":            None,
+        "flag_secures":            None,
+        "flag_steals":             None,
+        "flag_carrier_time_sec":   None,
+        "flag_carriers_killed":    None,
+    }
+
+    if ob := stats.get("OddballStats"):
+        result["oddball_skull_time_sec"] = parse_seconds(ob.get("TimeAsSkullCarrier"))
+        result["oddball_scoring_ticks"]  = ob.get("SkullScoringTicks")
+        result["oddball_skull_grabs"]    = ob.get("SkullGrabs")
+        result["oddball_carrier_kills"]  = ob.get("KillsAsSkullCarrier")
+        result["oddball_skulls_denied"]  = ob.get("SkullCarriersKilled")
+
+    if zs := stats.get("ZonesStats"):
+        result["zone_occupation_sec"] = parse_seconds(zs.get("StrongholdOccupationTime"))
+        result["zone_scoring_ticks"]  = zs.get("StrongholdScoringTicks")
+        result["zone_captures"]       = zs.get("StrongholdCaptures")
+        result["zone_def_kills"]      = zs.get("StrongholdDefensiveKills")
+        result["zone_off_kills"]      = zs.get("StrongholdOffensiveKills")
+        result["zone_secures"]        = zs.get("StrongholdSecures")
+
+    if cf := stats.get("CaptureTheFlagStats"):
+        result["flag_captures"]          = cf.get("FlagCaptures")
+        result["flag_grabs"]             = cf.get("FlagGrabs")
+        result["flag_returns"]           = cf.get("FlagReturns")
+        result["flag_secures"]           = cf.get("FlagSecures")
+        result["flag_steals"]            = cf.get("FlagSteals")
+        result["flag_carrier_time_sec"]  = parse_seconds(cf.get("TimeAsFlagCarrier"))
+        result["flag_carriers_killed"]   = cf.get("FlagCarriersKilled")
+
+    return result
+
+
+
+    pts_list = player.get("PlayerTeamStats") or []
+    want = player.get("LastTeamId")
+    if want is not None:
+        matched = [p for p in pts_list if p.get("TeamId") == want]
+        if matched:
+            pts_list = matched
+    total = 0
+    for pts in pts_list:
+        total += _walk_medals(pts.get("Stats", {}))
+    return total
 
 
 def _count_perfect_kills(player: dict[str, Any]) -> int:
@@ -411,12 +488,16 @@ def load_matches(config: AppConfig) -> pd.DataFrame:
 
         # チームスコア
         team_score = enemy_score = None
+        team_pw_kills = enemy_pw_kills = None
         for t in match.get("Teams", []):
-            sc = safe_get(t, "Stats", "CoreStats", "Score")
+            sc  = safe_get(t, "Stats", "CoreStats", "Score")
+            pwk = safe_get(t, "Stats", "CoreStats", "PowerWeaponKills")
             if t.get("TeamId") == my_team_id:
-                team_score = sc
+                team_score    = sc
+                team_pw_kills = pwk
             else:
-                enemy_score = sc
+                enemy_score    = sc
+                enemy_pw_kills = pwk
 
         # PlayerMatchStats
         expected_kills = expected_deaths = None
@@ -452,6 +533,7 @@ def load_matches(config: AppConfig) -> pd.DataFrame:
             enemy_mmr = round(float(em)) if em is not None else None
 
         perfect_kills = _count_perfect_kills(me)
+        obj_stats     = _parse_obj_stats(me)
 
         records.append({
             # 識別・メタ
@@ -477,6 +559,8 @@ def load_matches(config: AppConfig) -> pd.DataFrame:
             "team_rank":     me.get("Rank"),
             "team_score":    team_score,
             "enemy_score":   enemy_score,
+            "team_pw_kills": team_pw_kills,
+            "enemy_pw_kills": enemy_pw_kills,
             "team_mmr":      team_mmr,
             "enemy_mmr":     enemy_mmr,
             "duration_sec":  duration_sec,
@@ -486,6 +570,8 @@ def load_matches(config: AppConfig) -> pd.DataFrame:
             # TrueSkill2
             "expected_kills":  expected_kills,
             "expected_deaths": expected_deaths,
+            # オブジェクトスタッツ
+            **obj_stats,
             # パーティ（processor.py で追記）
             "party_size":    None,
         })

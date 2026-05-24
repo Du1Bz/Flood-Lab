@@ -93,6 +93,8 @@ XUID絞り込み時に `PlayerType=1` でBotを除外する。
 | 敵チームMMR | `enemy_mmr` | 敵チームMMR | `PlayerMatchStats.Result.TeamMmrs[敵チームID]` |
 | チームスコア（自） | `team_score` | 自チームスコア | `Teams[自チーム].Stats.CoreStats.Score` |
 | チームスコア（敵） | `enemy_score` | 敵チームスコア | `Teams[敵チーム].Stats.CoreStats.Score` |
+| 自チームPWキル | `team_pw_kills` | 自チームPWキル | `Teams[自チーム].Stats.CoreStats.PowerWeaponKills` |
+| 敵チームPWキル | `enemy_pw_kills` | 敵チームPWキル | `Teams[敵チーム].Stats.CoreStats.PowerWeaponKills` |
 | 試合時間 | `duration_sec` | 試合時間（秒） | `MatchInfo.Duration`（ISO 8601 → 秒） |
 | パーティ人数 | `party_size` | パーティ人数 | `build_party_map()` で推定 |
 | - | `party_type` | パーティタイプ | `party_size` から計算（ソロ/デュオ/トリオ/フルパ） |
@@ -156,6 +158,8 @@ XUID絞り込み時に `PlayerType=1` でBotを除外する。
 | 与ダメージ/分 | `damage_dealt_per_min` | 与ダメージ/分 | `damage_dealt / (duration_sec / 60)` |
 | 被ダメージ/分 | `damage_taken_per_min` | 被ダメージ/分 | `damage_taken / (duration_sec / 60)` |
 | 重火器キル密度 | `power_kill_density` | 重火器キル密度 | `power_kills / (duration_sec / 60)` |
+| PWコントロール率 | `pw_control_rate` | PWコントロール率 | `team_pw_kills / (team_pw_kills + enemy_pw_kills)`（両チーム0のとき`None`） |
+| エンゲージメント密度 | `engagement_density` | エンゲージメント密度 | `(kills + deaths + assists) / (duration_sec / 60)` |
 | eMMR増減 | `emmr_delta` | eMMR増減 | `emmr_post - emmr_pre` |
 
 ---
