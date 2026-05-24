@@ -106,8 +106,8 @@ if not exist "requirements.txt" (
 :: 6. 依存関係インストール
 :: --------------------------------------------------
 echo [Setup] Installing dependencies...
-.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
-.venv\Scripts\python.exe -m pip install -r requirements.txt --quiet
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 if errorlevel 1 (
     echo [Error] Failed to install dependencies.
     echo         Please check your network connection.
