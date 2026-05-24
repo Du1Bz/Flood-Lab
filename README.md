@@ -60,8 +60,9 @@ https://aka.ms/windowsappsdk/1.6/latest/windowsappruntimeinstall-x64.exe
 
 **③ 起動後すぐクラッシュする場合**
 
-エクスプローラーのアドレスバーに `%LOCALAPPDATA%\OpenSpartan.Workshop\` と入力して Enter を押し、`settings.json` を開いて `extraRitualEvents` の行を削除して保存。  
-その後ファイルを右クリック →「プロパティ」→「読み取り専用」にチェックを入れます。
+エクスプローラーのアドレスバーに %LOCALAPPDATA%\OpenSpartan.Workshop\ と入力して Enter を押し、settings.json を開いて extraRitualEvents の行を削除して保存。  
+("extraRitualEvents":~, の、最初の「"」から「,」まで)  
+その後ファイルを右クリック →「プロパティ」→「読み取り専用」にチェックを入れます。  
 
 **④ データの同期**
 
