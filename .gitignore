@@ -13,6 +13,8 @@ config.ini
 
 # OpenSpartan DB（個人のゲームデータ）
 *.db
+*.db-shm
+*.db-wal
 
 # データキャッシュ
 data/
