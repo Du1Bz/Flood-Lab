@@ -28,19 +28,23 @@ from .modes                import GAME_BASE, RULE_THEORY, FUNDAMENTALS
 from .equipment            import EQUIPMENT, POWER_ITEMS
 from .ranked_rotations     import RANKED_ROTATIONS
 from .community_heuristics import COMMUNITY_HEURISTICS
+from .mode_rules           import MODE_RULES, GAME_TERMS, MODE_METRIC_LIMITATIONS
 
 
 def build_game_context() -> dict[str, Any]:
     """全コンテキストをまとめた dict を返す（フィルタなし）。"""
     return {
         **GAME_BASE,
-        "fundamentals":        FUNDAMENTALS,
-        "rule_theory":         RULE_THEORY,
-        "maps":                MAPS,
-        "equipment":           EQUIPMENT,
-        "power_items":         POWER_ITEMS,
-        "ranked_rotations":    RANKED_ROTATIONS,
-        "community_heuristics": COMMUNITY_HEURISTICS,
+        "fundamentals":           FUNDAMENTALS,
+        "rule_theory":            RULE_THEORY,
+        "mode_rules":             MODE_RULES,
+        "game_terms":             GAME_TERMS,
+        "mode_metric_limitations": MODE_METRIC_LIMITATIONS,
+        "maps":                   MAPS,
+        "equipment":              EQUIPMENT,
+        "power_items":            POWER_ITEMS,
+        "ranked_rotations":       RANKED_ROTATIONS,
+        "community_heuristics":   COMMUNITY_HEURISTICS,
     }
 
 
@@ -115,14 +119,17 @@ def build_relevant_context(stat_df: pd.DataFrame) -> dict[str, Any]:
     }
 
     return {
-        "game_base":              GAME_BASE,
-        "fundamentals":           FUNDAMENTALS,
-        "relevant_maps":          relevant_maps,
-        "relevant_rules":         relevant_rules,
-        "equipment":              EQUIPMENT,
-        "power_items":            relevant_power_items,
-        "ranked_rotations":       RANKED_ROTATIONS,
-        "community_heuristics":   _filter_community_heuristics(active_rules),
+        "game_base":               GAME_BASE,
+        "fundamentals":            FUNDAMENTALS,
+        "relevant_maps":           relevant_maps,
+        "relevant_rules":          relevant_rules,
+        "relevant_mode_rules":     {k: v for k, v in MODE_RULES.items() if k in active_rules},
+        "game_terms":              GAME_TERMS,
+        "mode_metric_limitations": {k: v for k, v in MODE_METRIC_LIMITATIONS.items() if k in active_rules},
+        "equipment":               EQUIPMENT,
+        "power_items":             relevant_power_items,
+        "ranked_rotations":        RANKED_ROTATIONS,
+        "community_heuristics":    _filter_community_heuristics(active_rules),
     }
 
 
@@ -159,6 +166,9 @@ __all__ = [
     "METRIC_LIMITATIONS",
     "FUNDAMENTALS",
     "COMMUNITY_HEURISTICS",
+    "MODE_RULES",
+    "GAME_TERMS",
+    "MODE_METRIC_LIMITATIONS",
     "build_game_context",
     "build_relevant_context",
 ]

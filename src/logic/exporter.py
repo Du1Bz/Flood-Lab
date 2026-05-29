@@ -414,7 +414,7 @@ def _build_summary(df: pd.DataFrame) -> dict[str, Any]:
                         "oddball_skull_grabs", "oddball_carrier_kills", "oddball_skulls_denied"],
         "KOTH":        ["zone_occupation_sec", "zone_scoring_ticks",
                         "zone_def_kills", "zone_off_kills"],
-        "Strongholds": ["zone_occupation_sec", "zone_scoring_ticks", "zone_captures",
+        "Strongholds": ["zone_occupation_sec", "zone_captures",
                         "zone_def_kills", "zone_off_kills", "zone_secures"],
     }
 
