@@ -21,23 +21,26 @@ from typing import Any
 
 import pandas as pd
 
-from .analysis_contract  import ANALYSIS_CONTRACT
-from .metric_limitations import METRIC_LIMITATIONS
-from .maps               import MAPS
-from .modes              import GAME_BASE, RULE_THEORY
-from .equipment          import EQUIPMENT, POWER_ITEMS
-from .ranked_rotations   import RANKED_ROTATIONS
+from .analysis_contract    import ANALYSIS_CONTRACT
+from .metric_limitations   import METRIC_LIMITATIONS
+from .maps                 import MAPS
+from .modes                import GAME_BASE, RULE_THEORY, FUNDAMENTALS
+from .equipment            import EQUIPMENT, POWER_ITEMS
+from .ranked_rotations     import RANKED_ROTATIONS
+from .community_heuristics import COMMUNITY_HEURISTICS
 
 
 def build_game_context() -> dict[str, Any]:
     """全コンテキストをまとめた dict を返す（フィルタなし）。"""
     return {
         **GAME_BASE,
-        "rule_theory":       RULE_THEORY,
-        "maps":              MAPS,
-        "equipment":         EQUIPMENT,
-        "power_items":       POWER_ITEMS,
-        "ranked_rotations":  RANKED_ROTATIONS,
+        "fundamentals":        FUNDAMENTALS,
+        "rule_theory":         RULE_THEORY,
+        "maps":                MAPS,
+        "equipment":           EQUIPMENT,
+        "power_items":         POWER_ITEMS,
+        "ranked_rotations":    RANKED_ROTATIONS,
+        "community_heuristics": COMMUNITY_HEURISTICS,
     }
 
 
@@ -112,18 +115,50 @@ def build_relevant_context(stat_df: pd.DataFrame) -> dict[str, Any]:
     }
 
     return {
-        "game_base":         GAME_BASE,
-        "relevant_maps":     relevant_maps,
-        "relevant_rules":    relevant_rules,
-        "equipment":         EQUIPMENT,
-        "power_items":       relevant_power_items,
-        "ranked_rotations":  RANKED_ROTATIONS,
+        "game_base":              GAME_BASE,
+        "fundamentals":           FUNDAMENTALS,
+        "relevant_maps":          relevant_maps,
+        "relevant_rules":         relevant_rules,
+        "equipment":              EQUIPMENT,
+        "power_items":            relevant_power_items,
+        "ranked_rotations":       RANKED_ROTATIONS,
+        "community_heuristics":   _filter_community_heuristics(active_rules),
     }
+
+
+def _filter_community_heuristics(active_rules: set[str]) -> dict[str, Any]:
+    """
+    対象データに登場するルールに関係する community_heuristics だけを返す。
+    solo_queue / map_control は常に含める。
+    by_rule は active_rules に出るルールのみ絞り込む。
+    """
+    result: dict[str, Any] = {
+        "label_ja":   COMMUNITY_HEURISTICS["label_ja"],
+        "caution":    COMMUNITY_HEURISTICS["caution"],
+        "solo_queue": COMMUNITY_HEURISTICS["solo_queue"],
+        "map_control": COMMUNITY_HEURISTICS["map_control"],
+        "by_rule":    {},
+    }
+    rule_key_map = {
+        "slayer":      "slayer",
+        "ctf":         "ctf",
+        "koth":        "koth",
+        "oddball":     "oddball",
+        "strongholds": "strongholds",
+    }
+    by_rule = COMMUNITY_HEURISTICS.get("by_rule", {})
+    for rule in active_rules:
+        key = rule_key_map.get(rule.lower())
+        if key and key in by_rule:
+            result["by_rule"][rule] = by_rule[key]
+    return result
 
 
 __all__ = [
     "ANALYSIS_CONTRACT",
     "METRIC_LIMITATIONS",
+    "FUNDAMENTALS",
+    "COMMUNITY_HEURISTICS",
     "build_game_context",
     "build_relevant_context",
 ]
