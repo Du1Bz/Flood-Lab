@@ -27,6 +27,7 @@ from src.logic.halo_knowledge import (
     METRIC_LIMITATIONS,
     build_relevant_context,
 )
+from src.logic.export_features import build_role_profile
 
 # ==================================================
 # matchesに含めるカラム
@@ -85,12 +86,14 @@ SUGGESTED_PROMPT = """\
 データ構成:
 - analysis_contract: AIが破ってはいけない制約（必ず最初に確認すること）
 - game_context: ゲームルールと各ルールの競技セオリー（対象データに関係するマップ/ルールのみ）
+  - roles: ロール/役割コンテキスト（caution を必ず参照すること）
 - metric_limitations: 各指標の既知の限界（断定前に必ず確認すること）
 - glossary: 各指標の定義
 - summary: 集計済みサマリー（全体・マップ別・ルール別・パーティ別・セッション疲労・直近20試合）
 - features: 事前に計算した特徴量（プレイスタイル・傾向の要約）
   - win_loss_delta: 勝ち試合平均と負け試合平均の差
   - recent_vs_baseline: 直近20戦 vs それ以前の比較
+  - role_profile: ロール傾向スコア・coaching_hints（E-4注意: ロールは固定職ではなく傾向）
 - matches.recent_20: 直近20試合の生データ
 - matches.best_5 / worst_5: KDA上位・下位5試合
 
@@ -354,6 +357,8 @@ def _build_features(df: pd.DataFrame) -> dict[str, Any]:
         "obj_stats_by_rule":    obj_by_rule,
         "win_loss_delta":       _build_win_loss_delta(df),
         "recent_vs_baseline":   _build_recent_vs_baseline(df),
+        # E-2/E-3: ロール傾向・追加特徴量
+        "role_profile":         build_role_profile(df),
     }
 
 

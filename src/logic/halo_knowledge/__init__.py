@@ -29,22 +29,24 @@ from .equipment            import EQUIPMENT, POWER_ITEMS
 from .ranked_rotations     import RANKED_ROTATIONS
 from .community_heuristics import COMMUNITY_HEURISTICS
 from .mode_rules           import MODE_RULES, GAME_TERMS, MODE_METRIC_LIMITATIONS
+from .roles                import ROLES
 
 
 def build_game_context() -> dict[str, Any]:
     """全コンテキストをまとめた dict を返す（フィルタなし）。"""
     return {
         **GAME_BASE,
-        "fundamentals":           FUNDAMENTALS,
-        "rule_theory":            RULE_THEORY,
-        "mode_rules":             MODE_RULES,
-        "game_terms":             GAME_TERMS,
+        "fundamentals":            FUNDAMENTALS,
+        "rule_theory":             RULE_THEORY,
+        "mode_rules":              MODE_RULES,
+        "game_terms":              GAME_TERMS,
         "mode_metric_limitations": MODE_METRIC_LIMITATIONS,
-        "maps":                   MAPS,
-        "equipment":              EQUIPMENT,
-        "power_items":            POWER_ITEMS,
-        "ranked_rotations":       RANKED_ROTATIONS,
-        "community_heuristics":   COMMUNITY_HEURISTICS,
+        "roles":                   ROLES,
+        "maps":                    MAPS,
+        "equipment":               EQUIPMENT,
+        "power_items":             POWER_ITEMS,
+        "ranked_rotations":        RANKED_ROTATIONS,
+        "community_heuristics":    COMMUNITY_HEURISTICS,
     }
 
 
@@ -126,6 +128,7 @@ def build_relevant_context(stat_df: pd.DataFrame) -> dict[str, Any]:
         "relevant_mode_rules":     {k: v for k, v in MODE_RULES.items() if k in active_rules},
         "game_terms":              GAME_TERMS,
         "mode_metric_limitations": {k: v for k, v in MODE_METRIC_LIMITATIONS.items() if k in active_rules},
+        "roles":                   ROLES,
         "equipment":               EQUIPMENT,
         "power_items":             relevant_power_items,
         "ranked_rotations":        RANKED_ROTATIONS,
@@ -169,6 +172,7 @@ __all__ = [
     "MODE_RULES",
     "GAME_TERMS",
     "MODE_METRIC_LIMITATIONS",
+    "ROLES",
     "build_game_context",
     "build_relevant_context",
 ]
