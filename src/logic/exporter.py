@@ -38,6 +38,67 @@ EXPORT_COLUMNS = [
 ]
 
 # ==================================================
+# A-1. analysis_contract（分析ルール）
+# AIが破ってはいけない制約。推奨手順ではなく絶対ルール。
+# ==================================================
+
+ANALYSIS_CONTRACT: dict[str, Any] = {
+    "do_not_infer": [
+        "心理状態",
+        "VCの有無",
+        "正確な位置取り",
+        "味方の意図",
+        "敵の意図",
+    ],
+    "claim_rules": {
+        "min_games_for_hint":        3,
+        "min_games_for_claim":       5,
+        "min_games_for_strong_claim": 10,
+    },
+    "coaching_style": [
+        "根拠指標を必ず添える",
+        "改善提案は最大3つ",
+        "断定できないものは仮説として書く",
+        "ルール別・マップ別・共通習慣に分けて考える",
+        "ユーザー向けの出力は日本語で書く",
+    ],
+}
+
+# ==================================================
+# A-5. metric_limitations（指標の限界）
+# ==================================================
+
+METRIC_LIMITATIONS: dict[str, Any] = {
+    "pw_control_rate": (
+        "Shock Rifle によるキルは PowerWeaponKills に反映されない可能性があり、"
+        "pw_control_rate は過小評価になる（スナイパー・ロケット系のみ反映）。"
+    ),
+    "equipment": (
+        "装備（Repulsor・Thruster 等）の取得/使用ログがないため、"
+        "装備の使い方は直接評価できない。"
+    ),
+    "positioning": (
+        "位置情報がないため、アンカー・スポーン制御・射線管理は"
+        "代理指標でしか見られない。"
+    ),
+    "communication": (
+        "VC や味方とのコミュニケーションは観測できない。"
+    ),
+    "objective_detail": (
+        "旗ルート・ボール投棄・ヒル周辺ポジションなどの細かい判断は"
+        "直接観測できない。"
+    ),
+    "small_sample": (
+        "サンプル数が少ないマップ/ルール組み合わせは断定しない。"
+        "claim_rules の閾値を参照すること。"
+    ),
+    "zone_kills_scope": (
+        "zone_def_kills / zone_off_kills はエリア周辺での判定であり、"
+        "移動経路上の遠距離キルは含まれないため過小評価になりうる。"
+    ),
+}
+
+# ==================================================
 # ゲームコンテキスト（固定・バージョン管理）
 # ==================================================
 
@@ -258,59 +319,38 @@ GLOSSARY: dict[str, str] = {
 
 # ==================================================
 # プロンプト雛形
+# 役割: 分析の進め方の推奨手順のみ。
+# 制約は analysis_contract に一元化する。
 # ==================================================
 
 SUGGESTED_PROMPT = """\
 このデータはHalo Infinite専用のローカル分析ツール「Flood-Lab」によって生成されたエクスポートファイルです。
 
-あなたはHalo Infinite HCSの真剣なデータアナリストです。
-以下のデータを分析し、このプレイヤーへのコーチングフィードバックを行ってください。
+以下の手順でコーチングフィードバックを行ってください。
 
 データ構成:
-- game_context: ゲームルールと各ルールの競技セオリー（分析の文脈として参照してください）
+- analysis_contract: AIが破ってはいけない制約（必ず最初に確認すること）
+- game_context: ゲームルールと各ルールの競技セオリー（分析の文脈として参照）
+- metric_limitations: 各指標の既知の限界（断定前に必ず確認すること）
 - glossary: 各指標の定義
 - summary: 集計済みサマリー（全体・マップ別・ルール別・パーティ別・セッション疲労・直近20試合）
 - features: 事前に計算した特徴量（プレイスタイル・傾向の要約）
+  - win_loss_delta: 勝ち試合平均と負け試合平均の差
+  - recent_vs_baseline: 直近20戦 vs それ以前の比較
 - matches.recent_20: 直近20試合の生データ
 - matches.best_5 / worst_5: KDA上位・下位5試合
 
-以下の構成を参考に分析してください。
-各セクションの中身はあなたの判断で自由に構成してください。
-
-① 総合評価
-   期間・試合数・全体的な立ち位置を簡潔に。
-
-② プレイスタイル診断
-   ヒント: TSI・K-RPI・D-RPIからプレイスタイルの傾向を読み取ることができます。
-   ヒント: パーフェクト率・DTR・DPMから精度と前線への圧力を評価できます。
-
-③ ルール別適性分析
-   ヒント: game_contextのrule_theoryのセオリーと照らし合わせることで、
-   何ができていて何が足りないかを評価できます。
-   ヒント: Oddballではd_rpiが高くk_rpiが低い場合に守りすぎのサインが読み取れることがあります。
-
-④ マップ適性
-   得意マップ・苦手マップの特定と、その推定理由。
-
-⑤ パワーウェポンコントロール
-   ヒント: pw_control_rateとpw_control_win_corrから傾向を読み取ることができます。
-   ただしgame_contextのshock_rifle_noteにある通り、過小評価になる点を前置きしてください。
-
-⑥ セッション・コンディション傾向
-   ヒント: session_fatigueとソロ/パーティの勝率差から傾向を読み取ることができます。
-
-⑦ 優先改善ポイント（最大3つ）
-   「〇〇という状況で△△を試してください」レベルまで具体的に。
-   game_contextのセオリーと数値の両方を根拠にしてください。
-
-⑧ データから見えた意外な知見（自由記述）
-   枠組みの外で気づいたこと・仮説があれば追記してください。
-
-注意:
-- 数値の引用はsummaryとfeaturesを主に使い、matchesは補足的に参照してください
-- 根拠のない一般論は避け、データに基づいて述べてください
-- 改善ポイントは「試合に勝つために何をすればよいか」に直結させてください
-- 数値から行動や意図を読み取るには限界があります。分析結果はあくまで参考として、複数の可能性を検討しながら解釈してください\
+推奨手順:
+0. ユーザー向けのコーチング出力は日本語で書く。
+   内部キーが英語でも、説明では日本語ラベルを優先する。
+1. まず win_loss_delta を見て、勝敗に効いている指標を特定する。
+2. 次に recent_vs_baseline を見て、最近の変化（改善/悪化）を確認する。
+3. その後、ルール別・マップ別に原因を分ける。
+4. game_context の rule_theory と照合し、何ができていて何が足りないかを評価する。
+5. sample_size（サンプル数）が少ない項目は仮説として扱う（claim_rules を参照）。
+6. metric_limitations に書かれた制約を必ず考慮する。
+7. 位置取り・VC・意図など DB にない情報は断定しない（analysis_contract 参照）。
+8. 改善提案は最大3つに絞り、各提案に根拠指標を添える。\
 """
 
 # ==================================================
@@ -360,6 +400,104 @@ def _agg_group(df: pd.DataFrame) -> dict[str, Any]:
         "engagement_density_mean": _safe_round(df["engagement_density"].mean(), 2)
             if "engagement_density" in df.columns else None,
     }
+
+
+def _build_win_loss_delta(df: pd.DataFrame) -> dict[str, Any]:
+    """
+    A-2. win_loss_delta（勝敗差分）。
+    勝ち試合平均 vs 負け試合平均の差を指標ごとに計算する。
+    """
+    win_df  = df[df["result_flag"] == 1]
+    loss_df = df[df["result_flag"] == 0]
+
+    def _tsi_mean(sub: pd.DataFrame) -> float | None:
+        k = sub["kills"].sum()
+        a = sub["assists"].sum()
+        return _safe_round(a / (k + a), 3) if (k + a) > 0 else None
+
+    compare_cols = [
+        ("kda",                "KDA"),
+        ("accuracy",           "命中率"),
+        ("damage_diff",        "ダメージ差"),
+        ("k_rpi",              "K-RPI"),
+        ("d_rpi",              "D-RPI"),
+        ("pw_control_rate",    "PWコントロール率（ショックライフル未計上）"),
+        ("engagement_density", "エンゲージメント密度"),
+    ]
+
+    result: dict[str, Any] = {}
+    for col, label in compare_cols:
+        if col not in df.columns:
+            continue
+        w = _safe_round(win_df[col].mean(),  3) if len(win_df)  > 0 else None
+        l = _safe_round(loss_df[col].mean(), 3) if len(loss_df) > 0 else None
+        d = _safe_round(w - l, 3) if (w is not None and l is not None) else None
+        result[col] = {"label": label, "win": w, "loss": l, "diff": d}
+
+    result["tsi"] = {
+        "label": "チームシュート依存度（TSI）",
+        "win":   _tsi_mean(win_df),
+        "loss":  _tsi_mean(loss_df),
+        "diff":  _safe_round(
+            (_tsi_mean(win_df) or 0) - (_tsi_mean(loss_df) or 0), 3
+        ) if (_tsi_mean(win_df) is not None and _tsi_mean(loss_df) is not None) else None,
+    }
+
+    return result
+
+
+def _build_recent_vs_baseline(df: pd.DataFrame, recent_n: int = 20) -> dict[str, Any]:
+    """
+    A-3. recent_vs_baseline（直近比較）。
+    直近 recent_n 戦 vs それ以前の平均を比較する。
+    """
+    df_sorted = df.sort_values("played_at")
+    recent = df_sorted.tail(recent_n)
+    prior  = df_sorted.iloc[:-recent_n] if len(df_sorted) > recent_n else pd.DataFrame(columns=df.columns)
+
+    compare_cols = [
+        ("win_rate",           None,              "勝率"),
+        ("kd_ratio",           None,              "K/D"),
+        ("kda",                None,              "KDA"),
+        ("accuracy",           None,              "命中率"),
+        ("damage_diff",        None,              "ダメージ差"),
+        ("k_rpi",              None,              "K-RPI"),
+        ("d_rpi",              None,              "D-RPI"),
+        ("impact_score",       None,              "インパクトスコア"),
+        ("pw_control_rate",    None,              "PWコントロール率"),
+        ("engagement_density", None,              "エンゲージメント密度"),
+    ]
+
+    def _col_mean(sub: pd.DataFrame, col: str) -> float | None:
+        if col == "win_rate":
+            return _safe_round(sub["result_flag"].mean(), 3) if "result_flag" in sub.columns and len(sub) > 0 else None
+        if col == "kd_ratio":
+            d = sub["deaths"].sum()
+            k = sub["kills"].sum()
+            return _safe_round(k / d if d > 0 else k, 2) if len(sub) > 0 else None
+        if col not in sub.columns or len(sub) == 0:
+            return None
+        return _safe_round(sub[col].mean(), 3)
+
+    result: dict[str, Any] = {
+        "recent_n":    len(recent),
+        "prior_n":     len(prior),
+        "note":        f"直近{len(recent)}戦 vs それ以前{len(prior)}戦の比較。prior_n が少ない場合は参考値。",
+        "metrics":     {},
+    }
+
+    for col, _, label in compare_cols:
+        r = _col_mean(recent, col)
+        p = _col_mean(prior,  col) if len(prior) > 0 else None
+        d = _safe_round(r - p, 3) if (r is not None and p is not None) else None
+        result["metrics"][col] = {
+            "label":   label,
+            "recent":  r,
+            "prior":   p,
+            "diff":    d,
+        }
+
+    return result
 
 
 def _build_features(df: pd.DataFrame) -> dict[str, Any]:
@@ -440,48 +578,7 @@ def _build_features(df: pd.DataFrame) -> dict[str, Any]:
     else:
         style = None
 
-    # 勝敗別比較
-    WIN_LOSS_COLS = [
-        "kda", "accuracy", "damage_diff", "k_rpi", "d_rpi",
-        "pw_control_rate", "engagement_density", "tsi_per_match",
-    ]
-    win_df  = df[df["result_flag"] == 1]
-    loss_df = df[df["result_flag"] == 0]
-
-    # TSIは試合単位で計算
-    def _tsi_mean(sub: pd.DataFrame) -> float | None:
-        k = sub["kills"].sum(); a = sub["assists"].sum()
-        return _safe_round(a / (k + a), 3) if (k + a) > 0 else None
-
-    win_loss_cmp: dict[str, Any] = {}
-    compare_cols = [
-        ("kda",               "KDA"),
-        ("accuracy",          "命中率"),
-        ("damage_diff",       "ダメージ差"),
-        ("k_rpi",             "K-RPI"),
-        ("d_rpi",             "D-RPI"),
-        ("pw_control_rate",   "PWコントロール率（ショックライフル未計上）"),
-        ("engagement_density","エンゲージメント密度"),
-    ]
-    for col, label in compare_cols:
-        if col not in df.columns:
-            continue
-        w = _safe_round(win_df[col].mean(),  3) if len(win_df)  > 0 else None
-        l = _safe_round(loss_df[col].mean(), 3) if len(loss_df) > 0 else None
-        d = _safe_round(w - l, 3) if (w is not None and l is not None) else None
-        win_loss_cmp[col] = {"label": label, "win": w, "loss": l, "diff": d}
-
-    # TSIは別途計算
-    win_loss_cmp["tsi"] = {
-        "label": "チームシュート依存度（TSI）",
-        "win":  _tsi_mean(win_df),
-        "loss": _tsi_mean(loss_df),
-        "diff": _safe_round(
-            (_tsi_mean(win_df) or 0) - (_tsi_mean(loss_df) or 0), 3
-        ) if (_tsi_mean(win_df) is not None and _tsi_mean(loss_df) is not None) else None,
-    }
-
-    # ルール別オブジェクトスタッツの勝敗比較
+    # ルール別オブジェクトスタッツの集計
     OBJ_FEATURE_COLS: dict[str, list[str]] = {
         "CTF":         ["flag_captures", "flag_grabs", "flag_carrier_time_sec", "flag_carriers_killed"],
         "Oddball":     ["oddball_skull_time_sec", "oddball_skull_grabs", "oddball_skulls_denied"],
@@ -513,7 +610,44 @@ def _build_features(df: pd.DataFrame) -> dict[str, Any]:
         "pw_control_win_corr":  pw_win_corr,
         "engagement_by_rule":   eng_by_rule,
         "obj_stats_by_rule":    obj_by_rule,
+        # A-2: 勝敗差分（バグ修正: 以前は計算していたが return に含まれていなかった）
+        "win_loss_delta":       _build_win_loss_delta(df),
+        # A-3: 直近比較
+        "recent_vs_baseline":   _build_recent_vs_baseline(df),
     }
+
+
+def _build_map_mode_matrix(df: pd.DataFrame) -> dict[str, Any]:
+    """
+    A-4. map_mode_matrix（マップ×ルール表）。
+    map_name × rule_name ごとの勝率・KDA平均・試合数。
+    試合数が少ないセルは confidence を下げる。
+    """
+    matrix: dict[str, Any] = {}
+
+    for (map_name, rule_name), grp in df.groupby(["map_name", "rule_name"]):
+        n = len(grp)
+        key = f"{map_name} / {rule_name}"
+        win_rate = _safe_round(grp["result_flag"].mean(), 3) if n > 0 else None
+        kda_mean = _safe_round(grp["kda"].mean(), 2) if n > 0 else None
+
+        if n < 3:
+            confidence = "low"
+        elif n < 5:
+            confidence = "medium"
+        else:
+            confidence = "high"
+
+        matrix[key] = {
+            "map":        str(map_name),
+            "rule":       str(rule_name),
+            "matches":    n,
+            "win_rate":   win_rate,
+            "kda_mean":   kda_mean,
+            "confidence": confidence,
+        }
+
+    return matrix
 
 
 def _build_summary(df: pd.DataFrame) -> dict[str, Any]:
@@ -554,7 +688,6 @@ def _build_summary(df: pd.DataFrame) -> dict[str, Any]:
             continue
         rule_data = _agg_group(grp)
 
-        # ルール名を正規化してOBJ_COLSを引く
         rule_key = str(rule_name)
         obj_cols = OBJ_COLS.get(rule_key, [])
         if obj_cols:
@@ -588,6 +721,9 @@ def _build_summary(df: pd.DataFrame) -> dict[str, Any]:
 
     # 直近20試合のトレンド
     summary["recent_20"] = _agg_group(df.tail(20))
+
+    # A-4: マップ×ルール表
+    summary["map_mode_matrix"] = _build_map_mode_matrix(df)
 
     return summary
 
@@ -652,13 +788,15 @@ def build_export(
     }
 
     export = {
-        "meta":             meta,
-        "suggested_prompt": SUGGESTED_PROMPT,
-        "game_context":     GAME_CONTEXT,
-        "glossary":         GLOSSARY,
-        "features":         _build_features(stat_df),
-        "summary":          _build_summary(stat_df),
-        "matches":          _build_matches_sample(df_filtered, stat_df),
+        "meta":               meta,
+        "analysis_contract":  ANALYSIS_CONTRACT,       # A-1
+        "suggested_prompt":   SUGGESTED_PROMPT,
+        "metric_limitations": METRIC_LIMITATIONS,      # A-5
+        "game_context":       GAME_CONTEXT,
+        "glossary":           GLOSSARY,
+        "features":           _build_features(stat_df),  # A-2, A-3 含む
+        "summary":            _build_summary(stat_df),   # A-4 含む
+        "matches":            _build_matches_sample(df_filtered, stat_df),
     }
 
     return json.dumps(export, ensure_ascii=False, indent=2)
