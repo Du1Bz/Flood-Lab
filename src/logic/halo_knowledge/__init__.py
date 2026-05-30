@@ -1,0 +1,178 @@
+"""
+halo_knowledge/__init__.py
+---------------------------
+halo_knowledge パッケージの公開インターフェース。
+
+外部からは以下をインポートして使う:
+
+    from src.logic.halo_knowledge import (
+        build_game_context,
+        build_relevant_context,
+        ANALYSIS_CONTRACT,
+        METRIC_LIMITATIONS,
+    )
+
+build_game_context()      : 全コンテキストをまとめた dict を返す（フィルタなし）
+build_relevant_context()  : stat_df に登場するマップ/ルールだけに絞った dict を返す（B-4）
+"""
+
+from __future__ import annotations
+from typing import Any
+
+import pandas as pd
+
+from .analysis_contract    import ANALYSIS_CONTRACT
+from .metric_limitations   import METRIC_LIMITATIONS
+from .maps                 import MAPS
+from .modes                import GAME_BASE, RULE_THEORY, FUNDAMENTALS
+from .equipment            import EQUIPMENT, POWER_ITEMS
+from .ranked_rotations     import RANKED_ROTATIONS
+from .community_heuristics import COMMUNITY_HEURISTICS
+from .mode_rules           import MODE_RULES, GAME_TERMS, MODE_METRIC_LIMITATIONS
+from .roles                import ROLES
+
+
+def build_game_context() -> dict[str, Any]:
+    """全コンテキストをまとめた dict を返す（フィルタなし）。"""
+    return {
+        **GAME_BASE,
+        "fundamentals":            FUNDAMENTALS,
+        "rule_theory":             RULE_THEORY,
+        "mode_rules":              MODE_RULES,
+        "game_terms":              GAME_TERMS,
+        "mode_metric_limitations": MODE_METRIC_LIMITATIONS,
+        "roles":                   ROLES,
+        "maps":                    MAPS,
+        "equipment":               EQUIPMENT,
+        "power_items":             POWER_ITEMS,
+        "ranked_rotations":        RANKED_ROTATIONS,
+        "community_heuristics":    COMMUNITY_HEURISTICS,
+    }
+
+
+def build_relevant_context(stat_df: pd.DataFrame) -> dict[str, Any]:
+    """
+    B-4. 対象データ用の文脈抽出。
+
+    stat_df に登場するマップ名・ルール名だけを絞り込んで返す。
+    AIに渡すコンテキストのサイズを削減し、関係ない情報でノイズを増やさない。
+
+    Parameters
+    ----------
+    stat_df : pd.DataFrame
+        exporter.py で exclude_flag 処理済みの DataFrame。
+        map_name / rule_name カラムを持つことを前提とする。
+
+    Returns
+    -------
+    dict
+        relevant_maps / relevant_rules / equipment / power_items /
+        ranked_rotations / game_base を含む絞り込み済みコンテキスト。
+    """
+    # 対象データに登場するマップ・ルールを抽出
+    active_maps: set[str] = set()
+    active_rules: set[str] = set()
+
+    if "map_name" in stat_df.columns:
+        active_maps  = set(stat_df["map_name"].dropna().unique())
+    if "rule_name" in stat_df.columns:
+        active_rules = set(stat_df["rule_name"].dropna().unique())
+
+    # マップコンテキストを絞り込む
+    relevant_maps: dict[str, Any] = {
+        name: data
+        for name, data in MAPS.items()
+        if name in active_maps
+    }
+
+    # ルールセオリーを絞り込む
+    # rule_nameとRULE_THEORYキーのマッピング（大文字/スペース違いを吸収）
+    _rule_key_map: dict[str, str] = {
+        "slayer":      "slayer",
+        "ctf":         "ctf",
+        "koth":        "koth",
+        "oddball":     "oddball",
+        "strongholds": "strongholds",
+    }
+    relevant_rules: dict[str, Any] = {}
+    for rule in active_rules:
+        key = _rule_key_map.get(rule.lower())
+        if key and key in RULE_THEORY:
+            relevant_rules[rule] = RULE_THEORY[key]
+    # common_frame は常に含める
+    relevant_rules["common_frame"] = RULE_THEORY["common_frame"]
+
+    # パワーアイテムは登場マップに絞る
+    # マップの items.powerups に含まれるもののみ渡す
+    active_powerups: set[str] = set()
+    for map_data in relevant_maps.values():
+        for pu in map_data.get("items", {}).get("powerups", []):
+            # powerups の値（"camo", "overshield"）を POWER_ITEMS のキーに変換
+            _pu_map = {
+                "camo":        "Active Camouflage",
+                "overshield":  "Overshield",
+            }
+            pi_key = _pu_map.get(pu)
+            if pi_key:
+                active_powerups.add(pi_key)
+
+    relevant_power_items: dict[str, Any] = {
+        k: v for k, v in POWER_ITEMS.items() if k in active_powerups
+    }
+
+    return {
+        "game_base":               GAME_BASE,
+        "fundamentals":            FUNDAMENTALS,
+        "relevant_maps":           relevant_maps,
+        "relevant_rules":          relevant_rules,
+        "relevant_mode_rules":     {k: v for k, v in MODE_RULES.items() if k in active_rules},
+        "game_terms":              GAME_TERMS,
+        "mode_metric_limitations": {k: v for k, v in MODE_METRIC_LIMITATIONS.items() if k in active_rules},
+        "roles":                   ROLES,
+        "equipment":               EQUIPMENT,
+        "power_items":             relevant_power_items,
+        "ranked_rotations":        RANKED_ROTATIONS,
+        "community_heuristics":    _filter_community_heuristics(active_rules),
+    }
+
+
+def _filter_community_heuristics(active_rules: set[str]) -> dict[str, Any]:
+    """
+    対象データに登場するルールに関係する community_heuristics だけを返す。
+    solo_queue / map_control は常に含める。
+    by_rule は active_rules に出るルールのみ絞り込む。
+    """
+    result: dict[str, Any] = {
+        "label_ja":   COMMUNITY_HEURISTICS["label_ja"],
+        "caution":    COMMUNITY_HEURISTICS["caution"],
+        "solo_queue": COMMUNITY_HEURISTICS["solo_queue"],
+        "map_control": COMMUNITY_HEURISTICS["map_control"],
+        "by_rule":    {},
+    }
+    rule_key_map = {
+        "slayer":      "slayer",
+        "ctf":         "ctf",
+        "koth":        "koth",
+        "oddball":     "oddball",
+        "strongholds": "strongholds",
+    }
+    by_rule = COMMUNITY_HEURISTICS.get("by_rule", {})
+    for rule in active_rules:
+        key = rule_key_map.get(rule.lower())
+        if key and key in by_rule:
+            result["by_rule"][rule] = by_rule[key]
+    return result
+
+
+__all__ = [
+    "ANALYSIS_CONTRACT",
+    "METRIC_LIMITATIONS",
+    "FUNDAMENTALS",
+    "COMMUNITY_HEURISTICS",
+    "MODE_RULES",
+    "GAME_TERMS",
+    "MODE_METRIC_LIMITATIONS",
+    "ROLES",
+    "build_game_context",
+    "build_relevant_context",
+]
