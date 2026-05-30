@@ -181,9 +181,17 @@ def _classify_playlist(
 # ==================================================
 
 def _normalize_rule(rule: str) -> str:
-    """ルール名を正規化する。CTF 3 Captures / CTF 5 Captures → CTF にまとめる等。"""
-    if rule.upper().startswith("CTF"):
-        return "CTF"
+    """
+    ルール名を正規化する。
+
+    CTF 3 Captures / CTF 5 Captures は勝利条件が異なるため分離する。
+    （旧設計では CTF に統合していたが、貢献度の解釈が変わるため分割）
+    """
+    upper = rule.upper()
+    if upper.startswith("CTF"):
+        if "5" in rule:
+            return "CTF_5cap"
+        return "CTF_3cap"
     return rule
 
 

@@ -28,6 +28,7 @@ from src.logic.halo_knowledge import (
     build_relevant_context,
 )
 from src.logic.export_features import build_role_profile
+from src.logic.baseline import build_baseline
 
 # ==================================================
 # matchesに含めるカラム
@@ -80,35 +81,77 @@ GLOSSARY: dict[str, str] = {
 
 SUGGESTED_PROMPT = """\
 このデータはHalo Infinite専用のローカル分析ツール「Flood-Lab」によって生成されたエクスポートファイルです。
+ユーザー向けのコーチング出力は日本語で書くこと。内部キーが英語でも説明では日本語ラベルを優先する。
 
-以下の手順でコーチングフィードバックを行ってください。
+【データ構成】
+- analysis_contract : AIが破ってはいけない制約（最初に確認）
+- game_context      : ゲームルール・セオリー（対象データに関係するマップ/ルールのみ）
+  - roles           : ロール/役割コンテキスト（caution を必ず参照 ― ロールは固定職でなく傾向）
+- metric_limitations: 各指標の既知の限界（断定前に確認）
+- features.baseline.lobby_weighted : CSR重み付きロビー平均（KD/KDA/Accuracy/Damage/DPM等）
+- features.baseline.fixed          : 定義上固定の基準値（k_rpi=1.0 / d_rpi=1.0 / impact=1.0 / pw_control=0.5 / dtr=1.0 / win_rate=0.5）
+- features.baseline.unavailable    : 計算不可の指標と理由
+- features.win_loss_delta     : 勝ち/負け試合の平均差
+- features.recent_vs_baseline : 直近20戦 vs それ以前
+- features.role_profile       : ロール傾向スコア・coaching_hints
+- summary.by_rule   : ルール別集計（CTF_3cap / CTF_5cap は別集計）
+- summary.map_mode_matrix : マップ×ルール別勝率・KDA
 
-データ構成:
-- analysis_contract: AIが破ってはいけない制約（必ず最初に確認すること）
-- game_context: ゲームルールと各ルールの競技セオリー（対象データに関係するマップ/ルールのみ）
-  - roles: ロール/役割コンテキスト（caution を必ず参照すること）
-- metric_limitations: 各指標の既知の限界（断定前に必ず確認すること）
-- glossary: 各指標の定義
-- summary: 集計済みサマリー（全体・マップ別・ルール別・パーティ別・セッション疲労・直近20試合）
-- features: 事前に計算した特徴量（プレイスタイル・傾向の要約）
-  - win_loss_delta: 勝ち試合平均と負け試合平均の差
-  - recent_vs_baseline: 直近20戦 vs それ以前の比較
-  - role_profile: ロール傾向スコア・coaching_hints（E-4注意: ロールは固定職ではなく傾向）
-- matches.recent_20: 直近20試合の生データ
-- matches.best_5 / worst_5: KDA上位・下位5試合
+【出力フォーマット】
+以下の8セクションで出力すること。各セクションは見出しを付ける。
 
-推奨手順:
-0. ユーザー向けのコーチング出力は日本語で書く。
-   内部キーが英語でも、説明では日本語ラベルを優先する。
-1. まず win_loss_delta を見て、勝敗に効いている指標を特定する。
-2. 次に recent_vs_baseline を見て、最近の変化（改善/悪化）を確認する。
-3. その後、ルール別・マップ別に原因を分ける。
-4. game_context の relevant_rules と照合し、何ができていて何が足りないかを評価する。
-5. sample_size（サンプル数）が少ない項目は仮説として扱う（claim_rules を参照）。
-6. metric_limitations に書かれた制約を必ず考慮する。
-7. 位置取り・VC・意図など DB にない情報は断定しない（analysis_contract 参照）。
-8. 改善提案は最大3つに絞り、各提案に根拠指標を添える。\
-"""
+① 総合評価
+  - 対象期間・試合数・勝率・CSR増減を1〜2文で要約する。
+  - win_loss_delta と recent_vs_baseline の両方を参照し、
+    「全体傾向」と「最近の変化」を分けて述べる。
+
+② プレイスタイル診断
+  - role_profile の primary_tendency と scores を参照する。
+  - ego_challenge_risk / passivity_proxy / assist_ratio も含めて傾向を述べる。
+  - 「ロールは固定職ではなくこの期間の傾向」と必ず断りを入れる。
+
+③ ルール別適性分析
+  - 全ルール（Slayer / CTF_3cap / CTF_5cap / KOTH / Oddball / Strongholds）の
+    勝率・K-RPI・D-RPIを比較する。
+  - game_context.relevant_rules のセオリーと照合し、
+    「何ができていて何が足りないか」を述べる。
+  - CTF_3cap と CTF_5cap は必ず分けて評価する（勝利条件が異なるため）。
+  - obj_stats（flag_steals / flag_captures / oddball_skull_time_sec 等）を参照し、
+    game_context の診断シグナルと照合する。
+
+④ マップ適性
+  - map_mode_matrix から5試合以上のセルを中心に苦手/得意を整理する。
+  - confidence が low のセルは仮説として扱う。
+  - マップの layout（long_sightlines / verticality）とプレイスタイルの相性を述べる。
+
+⑤ パワーウェポンコントロール
+  - pw_control_rate（win/loss差）と pw_control_win_corr を参照する。
+  - ショックライフルマップでは過小評価になる点（metric_limitations）を考慮する。
+  - マップ別に見て特にPW確保が勝敗に効いているマップを指摘する。
+
+⑥ セッション・コンディション傾向
+  - session_fatigue（セッション内試合番号別KDA）を参照する。
+  - 疲労傾向や調子の波があれば述べる。
+  - solo_win_rate / party_win_rate の差があれば言及する。
+
+⑦ 優先改善ポイント（最大3つ）
+  - 各提案に根拠指標を必ず添える。
+  - 断定できないものは「〜の可能性がある」と表現する。
+  - 改善の具体的な行動レベルまで落とす。
+
+⑧ データから見えた意外な知見（自由記述）
+  - 上記7セクションで触れられなかった興味深いパターンや逆説的なデータを述べる。
+  - なければ「特になし」でよい。
+
+【分析上の注意】
+- metric_limitations と analysis_contract を常に参照する。
+- sample_size が少ないセルは claim_rules の閾値を参照して断定しない。
+- 位置取り・VC・意図など DB にない情報は断定しない。
+- flag_grabs はドリブル技術・ルート・妨害など複数要因が絡むため単体で推論に使わない。
+  CTF の「無理な突入」判定は flag_steals を主シグナルとして使うこと。
+- oddball_skull_time_sec が高く oddball_skull_grabs が少ない場合は、
+  人数不利時にボールをOB/オープンへ投棄できていない可能性を検討する。"""
+
 
 # ==================================================
 # 集計サマリーの生成
@@ -256,7 +299,7 @@ def _build_recent_vs_baseline(df: pd.DataFrame, recent_n: int = 20) -> dict[str,
     return result
 
 
-def _build_features(df: pd.DataFrame) -> dict[str, Any]:
+def _build_features(df: pd.DataFrame, db_con=None, my_xuid: str = "") -> dict[str, Any]:
     """
     AIに渡す事前計算済み特徴量。
     生データを渡す代わりにここで要約する。
@@ -325,7 +368,8 @@ def _build_features(df: pd.DataFrame) -> dict[str, Any]:
         style = None
 
     OBJ_FEATURE_COLS: dict[str, list[str]] = {
-        "CTF":         ["flag_captures", "flag_grabs", "flag_carrier_time_sec", "flag_carriers_killed"],
+        "CTF_3cap":    ["flag_captures", "flag_carrier_time_sec", "flag_carriers_killed", "flag_steals"],
+        "CTF_5cap":    ["flag_captures", "flag_carrier_time_sec", "flag_carriers_killed", "flag_steals"],
         "Oddball":     ["oddball_skull_time_sec", "oddball_skull_grabs", "oddball_skulls_denied"],
         "KOTH":        ["zone_occupation_sec", "zone_def_kills", "zone_off_kills"],
         "Strongholds": ["zone_occupation_sec", "zone_captures", "zone_secures",
@@ -359,6 +403,9 @@ def _build_features(df: pd.DataFrame) -> dict[str, Any]:
         "recent_vs_baseline":   _build_recent_vs_baseline(df),
         # E-2/E-3: ロール傾向・追加特徴量
         "role_profile":         build_role_profile(df),
+        # F-5: ベースライン
+        "baseline":             build_baseline(db_con, list(df["match_id"]), my_xuid, df)
+                                if db_con is not None else {"note": "db_con未渡しのためスキップ"},
     }
 
 
@@ -413,7 +460,9 @@ def _build_summary(df: pd.DataFrame) -> dict[str, Any]:
 
     OBJ_COLS: dict[str, list[str]] = {
         "Slayer":      [],
-        "CTF":         ["flag_captures", "flag_grabs", "flag_returns", "flag_secures",
+        "CTF_3cap":    ["flag_captures", "flag_returns", "flag_secures",
+                        "flag_steals", "flag_carrier_time_sec", "flag_carriers_killed"],
+        "CTF_5cap":    ["flag_captures", "flag_returns", "flag_secures",
                         "flag_steals", "flag_carrier_time_sec", "flag_carriers_killed"],
         "Oddball":     ["oddball_skull_time_sec", "oddball_scoring_ticks",
                         "oddball_skull_grabs", "oddball_carrier_kills", "oddball_skulls_denied"],
@@ -497,9 +546,14 @@ def build_export(
     df_filtered: pd.DataFrame,
     filter_info: dict[str, str],
     my_xuid: str,
+    db_con: "sqlite3.Connection | None" = None,
 ) -> str:
     """
     フィルター済みDataFrameからAI相談用JSONを生成して文字列で返す。
+
+    Parameters
+    ----------
+    db_con : SQLite接続。渡された場合はベースライン計算に使用する。
     """
     stat_df = df_filtered[df_filtered["exclude_flag"] == ""].copy()
 
@@ -524,7 +578,7 @@ def build_export(
         "metric_limitations": METRIC_LIMITATIONS,
         "game_context":       build_relevant_context(stat_df),   # B-4: 絞り込み済み
         "glossary":           GLOSSARY,
-        "features":           _build_features(stat_df),
+        "features":           _build_features(stat_df, db_con=db_con, my_xuid=my_xuid),
         "summary":            _build_summary(stat_df),
         "matches":            _build_matches_sample(df_filtered, stat_df),
     }

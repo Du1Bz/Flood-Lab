@@ -228,23 +228,43 @@ RULE_THEORY: dict[str, Any] = {
             "味方が複数ダウンしている状態で旗を抜きに行って孤立する",
         ],
         "data_signals": {
-            "high_grabs_low_captures": {
-                "condition": "flag_grabs high AND flag_captures low",
-                "hypothesis": "旗を抜くタイミング・ルート・護衛・敵旗リターン判断に課題がある可能性",
+            "high_steals_low_kills": {
+                "condition": "flag_steals high AND k_rpi low",
+                "hypothesis": (
+                    "敵陣に旗を取りに行くチャレンジは多いがキルが取れていない可能性。"
+                    "ウェーブを合わせる前にスティールに行って死んでいるパターンが疑われる。"
+                    "flag_steals を無理な突入の主シグナルとして使う。"
+                ),
+            },
+            "high_steals_low_captures": {
+                "condition": "flag_steals high AND flag_captures low",
+                "hypothesis": (
+                    "旗を奪取しているが帰還できていない可能性。"
+                    "ウェーブを合わせずに旗を触っている、またはルート・護衛に課題がある可能性。"
+                ),
+            },
+            "low_steals_low_captures": {
+                "condition": "flag_steals low AND flag_captures low",
+                "hypothesis": (
+                    "攻撃への参加が少ない可能性。"
+                    "プッシュが遅い、またはプッシュ中にデスして攻め切れていない可能性。"
+                ),
             },
             "high_returns_low_captures": {
                 "condition": "flag_returns high AND flag_captures low",
                 "hypothesis": "防衛貢献はあるが、攻撃のセットアップや旗キャリア護衛に課題がある可能性",
             },
-            "high_steals_low_kills": {
-                "condition": "flag_steals high AND k_rpi low",
-                "hypothesis": "無理に旗をスティールしに行きキルが取れていない可能性",
-            },
         },
+        "flag_grabs_note": (
+            "flag_grabs はドリブル技術・ルート・妨害など複数要因が絡むため単体で推論に使わない。"
+            "1本キャプチャでも安全ルートで邪魔されなければ grabs=9 になりうる（ドリブル仕様）。"
+            "grabs 数の多少は「チャレンジ回数」ではなく「ドリブル技術やルート」の指標として扱う。"
+        ),
         "counter_evidence": {
-            "high_grabs_low_captures":   ["flag_carrier_time_sec high", "flag_carriers_killed high"],
-            "high_returns_low_captures": ["team_score close", "damage_diff positive"],
             "high_steals_low_kills":     ["flag_captures high"],
+            "high_steals_low_captures":  ["flag_carrier_time_sec high", "flag_carriers_killed high"],
+            "low_steals_low_captures":   ["flag_returns high", "damage_diff positive"],
+            "high_returns_low_captures": ["team_score close", "damage_diff positive"],
         },
     },
 
@@ -280,6 +300,15 @@ RULE_THEORY: dict[str, Any] = {
                 "condition": "oddball_skull_time_sec high AND k_rpi low",
                 "hypothesis": "ボール役として自然にキルが低く出ている可能性（役割上の特性）",
             },
+            "high_time_low_grabs": {
+                "condition": "oddball_skull_time_sec high AND oddball_skull_grabs low",
+                "hypothesis": (
+                    "保持時間は長いがグラブ数が少ない。"
+                    "人数不利（3v4・2v4等）の状況でもボールをOB/オープンへ投棄せず"
+                    "持ち続けてしまっている可能性がある。"
+                    "不利状況では投棄して味方スポーンを待って仕切り直す判断が重要。"
+                ),
+            },
             "low_time_low_k_low_eng": {
                 "condition": "oddball_skull_time_sec low AND k_rpi low AND engagement_density low",
                 "hypothesis": "ボール保持にも周辺戦闘にも関与が薄い可能性",
@@ -291,6 +320,7 @@ RULE_THEORY: dict[str, Any] = {
         },
         "counter_evidence": {
             "high_time_low_k":        ["oddball_scoring_ticks high"],
+            "high_time_low_grabs":    ["oddball_skulls_denied high", "k_rpi high"],
             "low_time_low_k_low_eng": ["d_rpi high", "damage_diff positive"],
             "high_d_low_k":           ["oddball_skulls_denied high"],
         },

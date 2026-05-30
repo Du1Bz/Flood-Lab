@@ -87,7 +87,15 @@ with st.sidebar:
             "playlist": playlist_sel, "map": map_sel, "rule": rule_sel,
         }
         cfg = st.session_state.get("config")
-        json_str = build_export(df_filtered, filter_info, cfg.my_xuid if cfg else "unknown")
+        from src.core.database import open_db_readonly
+        db_con = open_db_readonly(cfg.db_path) if cfg else None
+        json_str = build_export(
+            df_filtered, filter_info,
+            cfg.my_xuid if cfg else "unknown",
+            db_con=db_con,
+        )
+        if db_con:
+            db_con.close()
         filename = f"flood_lab_export_{dt_.now().strftime('%Y%m%d_%H%M')}.json"
         st.download_button("💾 ダウンロード", data=json_str.encode("utf-8"),
                            file_name=filename, mime="application/json", use_container_width=True)
